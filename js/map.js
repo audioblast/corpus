@@ -125,6 +125,10 @@ async function _draw(view, onRecording) {
   const [L, data] = await Promise.all([_loadLeaflet(), fetchSpecimenMap()]);
 
   _map = L.map(view.canvas, { worldCopyJump: true });
+  // Give the map a view before it has a size. Leaflet ignores invalidateSize on a
+  // map with no view, so one drawn while its page is hidden could never resize or
+  // frame itself once the page showed.
+  _map.setView([20, 0], 2);
   L.tileLayer(config.mapTiles.url, {
     attribution: config.mapTiles.attribution,
     maxZoom: 18,
