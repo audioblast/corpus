@@ -62,10 +62,10 @@
 
   <nav aria-label="Primary">
     <button data-page="home"        class="active" aria-current="page">Search</button>
-    <button data-page="browse">Browse taxa</button>
-    <button data-page="traits">Browse traits</button>
-    <button data-page="annotations">Browse annotations</button>
-    <button data-page="map">Recordings map</button>
+    {{#browse}}<button data-page="browse">Browse taxa</button>{{/browse}}
+    {{#traits}}<button data-page="traits">Browse traits</button>{{/traits}}
+    {{#annotations}}<button data-page="annotations">Browse annotations</button>{{/annotations}}
+    {{#map}}<button data-page="map">Recordings map</button>{{/map}}
     <button data-page="about">About</button>
   </nav>
 
@@ -76,12 +76,16 @@
     <div class="header-stat" id="stat-taxa">
       <strong>—</strong>taxa
     </div>
+    {{#traits}}
     <div class="header-stat" id="stat-traits">
       <strong>—</strong>traits
     </div>
+    {{/traits}}
+    {{#annotations}}
     <div class="header-stat" id="stat-annotations">
       <strong>—</strong>annotations
     </div>
+    {{/annotations}}
   </div>
 </header>
 
@@ -99,7 +103,7 @@
         <p>{{heroText}}</p>
         <div class="hero-actions">
           <button class="btn btn-primary" id="cta-search">Search recordings</button>
-          <button class="btn btn-ghost"   id="cta-browse">Browse by taxon</button>
+          {{#browse}}<button class="btn btn-ghost"   id="cta-browse">Browse by taxon</button>{{/browse}}
         </div>
       </div>
       <div class="hero-viz" id="hero-waveform"></div>
@@ -147,6 +151,7 @@
 </div><!-- /page-home -->
 
 
+{{#browse}}
 <!-- ═══════════════════════════════════════════════════════════════
      PAGE: BROWSE
 ════════════════════════════════════════════════════════════════ -->
@@ -161,6 +166,8 @@
 </div>
 
 
+{{/browse}}
+{{#traits}}
 <!-- ═══════════════════════════════════════════════════════════════
      PAGE: TRAITS
 ════════════════════════════════════════════════════════════════ -->
@@ -211,6 +218,8 @@
 </div>
 
 
+{{/traits}}
+{{#annotations}}
 <!-- ═══════════════════════════════════════════════════════════════
      PAGE: ANNOTATIONS
 ════════════════════════════════════════════════════════════════ -->
@@ -251,6 +260,8 @@
 </div>
 
 
+{{/annotations}}
+{{#map}}
 <!-- ═══════════════════════════════════════════════════════════════
      PAGE: RECORDINGS MAP
 ════════════════════════════════════════════════════════════════ -->
@@ -267,6 +278,7 @@
 </div>
 
 
+{{/map}}
 <!-- ═══════════════════════════════════════════════════════════════
      PAGE: ABOUT
 ════════════════════════════════════════════════════════════════ -->

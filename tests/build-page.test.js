@@ -1,5 +1,6 @@
 // Tests for the page builder: a site's index.html and main.js made from its config/,
-// the check its Pages workflow runs, and a page the static-page generator builds on.
+// the features a site leaves out, the check its Pages workflow runs, and a page the
+// static-page generator builds on.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
@@ -33,9 +34,20 @@ async function siteCopy(t) {
   return dir;
 }
 
-// The fixture site with its page built, in a new folder.
-async function built(t) {
+// A copy of the fixture site whose config also sets `features`.
+async function siteWith(t, features) {
   const dir = await siteCopy(t);
+  const config = path.join(dir, 'config');
+  await fs.rename(path.join(config, 'site.js'), path.join(config, 'fixture.js'));
+  await fs.writeFile(path.join(config, 'site.js'),
+    `import site from './fixture.js';\nexport default { ...site, features: ${JSON.stringify(features)} };\n`);
+  return dir;
+}
+
+// The fixture site with its page built, in a new folder: from a config that also sets
+// `features`, if there are any.
+async function built(t, features) {
+  const dir = features ? await siteWith(t, features) : await siteCopy(t);
   const { code, stderr } = await run(BUILDER, ['--site-dir', dir]);
   assert.equal(code, 0, stderr);
   return dir;
@@ -51,6 +63,21 @@ async function pinnedTo(t, wanted) {
 }
 
 const exists = file => fs.access(file).then(() => true, () => false);
+
+// What each feature puts in the page.
+const PARTS = {
+  browse:      ['<button data-page="browse">', '<div id="page-browse" class="page">', 'id="cta-browse"'],
+  traits:      ['<button data-page="traits">', '<div id="page-traits" class="page">', 'id="stat-traits"'],
+  annotations: ['<button data-page="annotations">', '<div id="page-annotations" class="page">', 'id="stat-annotations"'],
+  map:         ['<button data-page="map">', '<div id="page-map" class="page">'],
+};
+
+// A page with sections left out has no gaps where they were: no line of spaces alone,
+// and no more blank lines in a row than the skeleton has.
+function assertNoGaps(page) {
+  assert.doesNotMatch(page, /^[ \t]+$/m, 'a line of spaces alone');
+  assert.doesNotMatch(page, /\n\n\n\n/, 'three blank lines in a row');
+}
 
 test('writes index.html and main.js from the config, pinned to this version', async t => {
   const dir = await built(t);
@@ -90,6 +117,66 @@ test('--core loads the core from somewhere else', async t => {
   assert.equal(code, 0, stderr);
   assert.match(await fs.readFile(path.join(dir, 'index.html'), 'utf8'), /href="\.\/corpus\/css\/style\.css"/);
   assert.match(await fs.readFile(path.join(dir, 'main.js'), 'utf8'), /from '\.\/corpus\/js\/app\.js'/);
+});
+
+test('every feature is on by default, and naming them all on changes nothing', async t => {
+  const page = await fs.readFile(path.join(await built(t), 'index.html'), 'utf8');
+  for (const [feature, parts] of Object.entries(PARTS)) {
+    for (const part of parts) assert.ok(page.includes(part), `${feature} has ${part}`);
+  }
+
+  const named = await built(t, { browse: true, traits: true, annotations: true, map: true });
+  assert.equal(await fs.readFile(path.join(named, 'index.html'), 'utf8'), page);
+});
+
+test('a site can leave out Browse taxa and the map, and --check passes on its page', async t => {
+  const dir = await built(t, { browse: false, map: false });
+  const page = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+
+  for (const part of [...PARTS.browse, ...PARTS.map]) assert.ok(!page.includes(part), `left out: ${part}`);
+  for (const part of [...PARTS.traits, ...PARTS.annotations]) assert.ok(page.includes(part), `kept: ${part}`);
+  assert.ok(page.includes([
+    '  <nav aria-label="Primary">',
+    '    <button data-page="home"        class="active" aria-current="page">Search</button>',
+    '    <button data-page="traits">Browse traits</button>',
+    '    <button data-page="annotations">Browse annotations</button>',
+    '    <button data-page="about">About</button>',
+    '  </nav>',
+  ].join('\n')));
+  assert.match(page, /img-src {4}'self' data: https:\/\/files\.audioblast\.org;/,
+    "with no map, neither the basemap's host nor Leaflet's icons");
+  assertNoGaps(page);
+  assert.equal((await run(BUILDER, ['--site-dir', dir, '--check'])).code, 0);
+});
+
+test('a site can leave out Browse traits and Browse annotations, and their counts', async t => {
+  const page = await fs.readFile(path.join(await built(t, { traits: false, annotations: false }), 'index.html'), 'utf8');
+
+  for (const part of [...PARTS.traits, ...PARTS.annotations]) assert.ok(!page.includes(part), `left out: ${part}`);
+  for (const part of [...PARTS.browse, ...PARTS.map]) assert.ok(page.includes(part), `kept: ${part}`);
+  assert.ok(page.includes([
+    '  <div class="header-stats">',
+    '    <div class="header-stat" id="stat-recordings">',
+    '      <strong>—</strong>recordings',
+    '    </div>',
+    '    <div class="header-stat" id="stat-taxa">',
+    '      <strong>—</strong>taxa',
+    '    </div>',
+    '  </div>',
+  ].join('\n')));
+  assert.match(page, /img-src {4}'self' data: https:\/\/files\.audioblast\.org https:\/\/tiles\.example https:\/\/cdn\.audioblast\.org;/);
+  assertNoGaps(page);
+});
+
+test('a feature the core does not have, or one set to neither true nor false, fails clearly', async t => {
+  for (const [features, message] of [
+    [{ maps: false }, /sets features\.maps, but the features are browse, traits, annotations, map/],
+    [{ map: 'no' }, /sets features\.map to "no", not true or false/],
+  ]) {
+    const { code, stderr } = await run(BUILDER, ['--site-dir', await siteWith(t, features)]);
+    assert.notEqual(code, 0);
+    assert.match(stderr, message);
+  }
 });
 
 test('--check passes on what it wrote, also with Windows line endings, and fails on a hand edit', async t => {
@@ -152,4 +239,23 @@ test("a site set to another corpus version needs that version's builder", async 
 
   const tested = await run(BUILDER, ['--site-dir', dir, '--core', './corpus']);
   assert.equal(tested.code, 0, '--core, for testing, skips the check');
+});
+
+test('without Browse taxa, the static-page generator still writes the taxon pages that recordings link to', async t => {
+  const dir = await built(t, { browse: false });
+  const api = await fakeApi({
+    taxa: [{ id: 1, taxon: 'Acheta domesticus', rank: 'species', parent_id: null }],
+    recordings: [{ id: 7, name: 'Song', taxon: 'Acheta domesticus', recording_type: 'Call' }],
+  });
+  t.after(() => api.close());
+
+  const out = path.join(dir, '_site');
+  const { code, stderr } = await run(GENERATOR, ['--site', 'https://example.test', '--out', out, '--api', api.url,
+    '--config', path.join(dir, 'config', 'site.js'), '--page', path.join(dir, 'index.html')]);
+  assert.equal(code, 0, stderr);
+  const taxon = await fs.readFile(path.join(out, 't', '1', 'index.html'), 'utf8');
+  assert.match(taxon, /<div id="page-taxon" class="page active" data-taxon="Acheta domesticus">/);
+  assert.doesNotMatch(taxon, /data-page="browse"/);
+  const recording = await fs.readFile(path.join(out, 'r', '7', 'index.html'), 'utf8');
+  assert.match(recording, /<a href="\/t\/1\/"><i>Acheta domesticus<\/i><\/a>/);
 });

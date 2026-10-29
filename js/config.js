@@ -63,6 +63,38 @@ const config = {
   /** The About page's content: an HTML fragment, which the app loads into the page. */
   aboutUrl: 'config/about.html',
 
+  // ── Features ──────────────────────────────────────────────────────
+
+  /**
+   * The parts of the core a site can leave out, each named as its page is in the
+   * address (?page=map):
+   *   browse       Browse taxa: the taxonomic tree, and the home page's button for it
+   *   traits       Browse traits, the traits count in the header, the Traits tab of a
+   *                taxon's view, and the traits column of the tree
+   *   annotations  Browse annotations, the annotations count in the header, and the
+   *                Annotations tab of a taxon's view. A recording's own annotations
+   *                stay on its page.
+   *   map          the Recordings map
+   * All are on. A site leaves one out by setting it to false, as { map: false }:
+   * tools/build-page.mjs leaves it out of the site's page, and the app neither shows
+   * it nor asks the API for it. A taxon's view and its page (tools/build-static.mjs)
+   * are not part of Browse taxa, and stay: a recording links to its taxon's.
+   */
+  features: {
+    browse:      true,
+    traits:      true,
+    annotations: true,
+    map:         true,
+  },
+
+  /**
+   * Whether the site has this feature. start() puts a site's features in place of
+   * these, so a feature the site doesn't name is on.
+   */
+  hasFeature(name) {
+    return config.features?.[name] !== false;
+  },
+
   // ── Audio files ───────────────────────────────────────────────────
 
   /**

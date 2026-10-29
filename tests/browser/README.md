@@ -1,6 +1,6 @@
 # Browser checks
 
-These checks run the app in Chromium, Firefox and WebKit with [Playwright](https://playwright.dev). They cover what used to be checked by hand: the home page, search, the browse pages, a recording's page and its player, taxon pages, the About page, the recordings map, and a source with no records. `npm test` doesn't run them: it stays fast, with no dependencies.
+These checks run the app in Chromium, Firefox and WebKit with [Playwright](https://playwright.dev). They cover what used to be checked by hand: the home page, search, the browse pages, a recording's page and its player, taxon pages, the About page, the recordings map, a source with no records, and sites that leave features out. `npm test` doesn't run them: it stays fast, with no dependencies.
 
 ## Running them
 
@@ -26,10 +26,11 @@ In CI, `.github/workflows/test.yml` runs them in a job for each browser. A check
 
 ## The check sites
 
-`sites/` holds two sites' `config/` folders, as a real site has:
+`sites/` holds four sites' `config/` folders, as a real site has:
 
 - `collection`, like bio's, on the collection in `data/collection.js`. It has two families of Orthoptera, a name with a subgenus, recordings identified to species and to genus, traits, annotations and specimens. It also has a Soundscape, which the site leaves out, and a recording whose specimen has no coordinates.
 - `empty`, like soil's, on a source with no records (`data/empty.js`).
+- `no-browse` and `no-traits`, on the same collection as `collection`, each with features left out (`features` in `js/config.js`): Browse taxa and the map, or Browse traits and Browse annotations. `features.spec.js` checks that a feature that is off has no place in the page, that its address shows home, and that the app makes none of its requests.
 
 Each worker assembles a site once, in a temp folder, as a site's Pages workflow does: `tools/build-page.mjs` writes its `index.html` and `main.js`, and `tools/build-static.mjs` writes its recording and taxon pages from the fake API. The page's preconnect hints are taken out, because they open connections that the harness can't answer.
 
@@ -58,5 +59,5 @@ A check fails, after it has run, on:
 - The app uses a new API endpoint or parameter: the check fails with the request's address. Add the endpoint or parameter to `fake-api.js`, with the matching rules the live API has, which `js/audioblast.js` describes.
 - `js/render.js` loads a new version of WaveSurfer or one of its plugins: the check fails and names it. Change the devDependency in `package.json` to that version.
 - A page's text or markup changes: change the check. The checks find things by their text and role where they can, and by the app's ids elsewhere.
-- A new page or feature: add a check to `collection.spec.js` or `empty.spec.js`, and rows to `data/` if it needs them.
+- A new page or feature: add a check to `collection.spec.js` or `empty.spec.js`, and rows to `data/` if it needs them. If a site can turn it off, check that in `features.spec.js` too.
 - A new Playwright: change the devDependency, run `npm install` and `npx playwright install`, and run the checks.

@@ -43,7 +43,6 @@ import {
 } from './ui.js';
 
 import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
-import { showSpecimenMap } from './map.js';
 
 // Must match the page size actually used for recording queries — the
 // audioBlast default of 250, which api.js also pages its cached rows at.
@@ -204,9 +203,11 @@ function showPage(name) {
 }
 
 // The recordings map, drawn the first time its page opens and only resized after
-// (js/map.js).
+// (js/map.js). Its module loads then too, so a site without the map never loads it.
 function loadMapPage() {
-  showSpecimenMap({ canvas: els.mapCanvas, count: els.mapCount, note: els.mapNote }, openDetail);
+  import('./map.js')
+    .then(({ showSpecimenMap }) => showSpecimenMap({ canvas: els.mapCanvas, count: els.mapCount, note: els.mapNote }, openDetail))
+    .catch(e => showError(els.mapCount, `The map could not be drawn: ${e.message}`));
 }
 
 // Clear search and return to the normal front page.
@@ -225,12 +226,14 @@ function goHome() {
 }
 
 // ── Header stats ─────────────────────────────────────────────────
+// A feature the site leaves out (config.features) has no count in the header, so
+// its count isn't asked for: it stands as a failed one, which shows nothing.
 async function loadHeaderStats() {
   const [recs, taxa, traits, annotations] = await Promise.allSettled([
     fetchRecordingCount(),
     fetchTaxaCount(),
-    fetchTraitsCount(),
-    fetchAnnotationsCount(),
+    config.hasFeature('traits')      ? fetchTraitsCount()      : Promise.reject(),
+    config.hasFeature('annotations') ? fetchAnnotationsCount() : Promise.reject(),
   ]);
   if (recs.status         === 'fulfilled') els.statRecordings.innerHTML  = `<strong>${recs.value.toLocaleString()}</strong>recordings`;
   if (taxa.status         === 'fulfilled') els.statTaxa.innerHTML        = `<strong>${taxa.value.toLocaleString()}</strong>taxa`;
@@ -467,6 +470,13 @@ function _renderTaxonShell(name) {
       </div>
     </div>`;
 
+  // The tabs of the features the site leaves out (config.features) go.
+  for (const tab of ['traits', 'annotations']) {
+    if (config.hasFeature(tab)) continue;
+    els.taxonContent.querySelector(`#taxon-tabbtn-${tab}`).remove();
+    els.taxonContent.querySelector(`#tab-${tab}`).remove();
+  }
+
   _linkBrowseTaxon(name, els.taxonContent.querySelector('.detail-grid'));
 
   const tabButtons = [...els.taxonContent.querySelectorAll('.taxon-tab')];
@@ -581,7 +591,8 @@ function _showTaxon(name, page = 1) {
 
       // Load traits once per taxon using the same rank params as recordings,
       // so higher-rank pages (genus, family, order…) include traits from all child taxa.
-      if (isNewTaxon) {
+      // A feature the site leaves out (config.features) has no tab to load.
+      if (isNewTaxon && config.hasFeature('traits')) {
         fetchTraitsForTaxon(state.taxonRankParams ?? { taxon: name })
           .then(res => {
             if (!isCurrent()) return;
@@ -595,7 +606,9 @@ function _showTaxon(name, page = 1) {
             renderTraits(els.taxonContent, rows.length > 0 ? rows : null);
           })
           .catch(() => { if (isCurrent()) renderTraits(els.taxonContent, null); });
+      }
 
+      if (isNewTaxon && config.hasFeature('annotations')) {
         fetchAnnotationsForTaxon(state.taxonRankParams ?? { taxon: name })
           .then(res => {
             if (!isCurrent()) return;
@@ -681,7 +694,8 @@ function _renderTreeNode(node) {
   const rankHtml  = `<span class="tree-rank">${esc(node.rank)}</span>`;
   const italic    = ITALIC_RANKS.has(node.rank.toLowerCase());
   const countHtml = `<span class="tree-count">${node.count}</span>`;
-  const traitHtml = `<span class="tree-trait-count">${node.traits > 0 ? node.traits : ''}</span>`;
+  // The traits column, where the site has traits (config.features).
+  const traitHtml = config.hasFeature('traits') ? `<span class="tree-trait-count">${node.traits > 0 ? node.traits : ''}</span>` : '';
   const displayName = esc(subgenusBrackets(node.name));
 
   if (node.isLeaf) {
@@ -983,7 +997,7 @@ function _renderBrowseTree(allRows, traitRows, progressHtml) {
     ${truncatedNotice}
     <div class="taxa-tree-header">
       <span class="tree-count">Recordings</span>
-      <span class="tree-trait-count">Traits</span>
+      ${config.hasFeature('traits') ? '<span class="tree-trait-count">Traits</span>' : ''}
     </div>
     <div class="taxa-tree">${html}</div>`;
 
@@ -1023,7 +1037,8 @@ async function loadBrowse() {
     showLoading(els.browseList, 'Loading taxa…');
     try {
       // Fetch traits in parallel — will likely finish before all recording pages load.
-      const traitPromise = _fetchAllTraitRows();
+      // A site without traits (config.features) has no traits column, so fetches none.
+      const traitPromise = config.hasFeature('traits') ? _fetchAllTraitRows() : Promise.resolve([]);
 
       const first = await fetchTaxa(1);
       _taxonPages = await taxonRowsByName().catch(() => null);
@@ -1112,7 +1127,9 @@ async function route() {
   const id     = params.get('id') ?? recordingIdFromPath();
   const q      = params.get('q') ?? '';
   const page   = parseInt(params.get('p') ?? '1', 10);
-  const pg     = params.get('page'); // named page (browse, about)
+  // The named page (browse, about). A feature the site leaves out (config.features)
+  // has none, so its address is taken as one with no page: home, or the taxon it names.
+  const pg     = config.hasFeature(params.get('page')) ? params.get('page') : null;
 
   if (id) {
     await loadDetailById(id, params.get('t'));
@@ -1319,39 +1336,46 @@ function init() {
   $('detail-back').addEventListener('click', back);
   $('taxon-back').addEventListener('click', back);
 
-  const td = { t: null };
-  const ad = { t: null };
+  // The filters of the traits and annotations pages. A feature the site leaves out
+  // (config.features) has no page, so nothing to set up.
+  if (config.hasFeature('traits')) {
+    const td = { t: null };
 
-  // Traits filters
-  setupFilterInputs(
-    [els.traitsTaxonInput, els.traitsTraitInput, els.traitsValueInput, els.traitsCallTypeInput, els.traitsSexInput],
-    td, loadTraitsPage,
-  );
-  $('traits-search-btn').addEventListener('click', () => { clearTimeout(td.t); loadTraitsPage(1); });
+    // Traits filters
+    setupFilterInputs(
+      [els.traitsTaxonInput, els.traitsTraitInput, els.traitsValueInput, els.traitsCallTypeInput, els.traitsSexInput],
+      td, loadTraitsPage,
+    );
+    $('traits-search-btn').addEventListener('click', () => { clearTimeout(td.t); loadTraitsPage(1); });
 
-  const traitsOnSelect = makeOnSelect(td, loadTraitsPage);
-  // Every suggestion here has to round-trip into a /data/traits/ query, and
-  // those params are exact-match — a near-miss returns nothing. So taxon and
-  // trait come from the traits table itself; the recordings module suggests
-  // taxa with recordings but no traits. The API rejects autocomplete on
-  // traits' value/call_type/sex, but traitstaxa exposes the same two columns
-  // as callType/sex. No module allows autocomplete on value, so it has none.
-  _setupAutocomplete(els.traitsTaxonInput,    q => fetchAutocomplete('traits',     'taxon',    q), traitsOnSelect(els.traitsTaxonInput));
-  _setupAutocomplete(els.traitsTraitInput,    q => fetchAutocomplete('traits',     'trait',    q), traitsOnSelect(els.traitsTraitInput));
-  _setupAutocomplete(els.traitsCallTypeInput, q => fetchAutocomplete('traitstaxa', 'callType', q), traitsOnSelect(els.traitsCallTypeInput));
-  _setupAutocomplete(els.traitsSexInput,      q => fetchAutocomplete('traitstaxa', 'sex',      q), traitsOnSelect(els.traitsSexInput));
+    const traitsOnSelect = makeOnSelect(td, loadTraitsPage);
+    // Every suggestion here has to round-trip into a /data/traits/ query, and
+    // those params are exact-match — a near-miss returns nothing. So taxon and
+    // trait come from the traits table itself; the recordings module suggests
+    // taxa with recordings but no traits. The API rejects autocomplete on
+    // traits' value/call_type/sex, but traitstaxa exposes the same two columns
+    // as callType/sex. No module allows autocomplete on value, so it has none.
+    _setupAutocomplete(els.traitsTaxonInput,    q => fetchAutocomplete('traits',     'taxon',    q), traitsOnSelect(els.traitsTaxonInput));
+    _setupAutocomplete(els.traitsTraitInput,    q => fetchAutocomplete('traits',     'trait',    q), traitsOnSelect(els.traitsTraitInput));
+    _setupAutocomplete(els.traitsCallTypeInput, q => fetchAutocomplete('traitstaxa', 'callType', q), traitsOnSelect(els.traitsCallTypeInput));
+    _setupAutocomplete(els.traitsSexInput,      q => fetchAutocomplete('traitstaxa', 'sex',      q), traitsOnSelect(els.traitsSexInput));
+  }
 
-  // Annotations filters
-  setupFilterInputs(
-    [els.annotationsTaxonInput, els.annotationsTypeInput, els.annotationsAnnotatorInput],
-    ad, loadAnnotationsPage,
-  );
-  $('annotations-search-btn').addEventListener('click', () => { clearTimeout(ad.t); loadAnnotationsPage(1); });
+  if (config.hasFeature('annotations')) {
+    const ad = { t: null };
 
-  const annotationsOnSelect = makeOnSelect(ad, loadAnnotationsPage);
-  _setupAutocomplete(els.annotationsTaxonInput,     q => fetchAutocomplete('annomate', 'taxon',     q), annotationsOnSelect(els.annotationsTaxonInput));
-  _setupAutocomplete(els.annotationsTypeInput,      q => fetchAutocomplete('annomate', 'type',      q), annotationsOnSelect(els.annotationsTypeInput));
-  _setupAutocomplete(els.annotationsAnnotatorInput, q => fetchAutocomplete('annomate', 'annotator', q), annotationsOnSelect(els.annotationsAnnotatorInput));
+    // Annotations filters
+    setupFilterInputs(
+      [els.annotationsTaxonInput, els.annotationsTypeInput, els.annotationsAnnotatorInput],
+      ad, loadAnnotationsPage,
+    );
+    $('annotations-search-btn').addEventListener('click', () => { clearTimeout(ad.t); loadAnnotationsPage(1); });
+
+    const annotationsOnSelect = makeOnSelect(ad, loadAnnotationsPage);
+    _setupAutocomplete(els.annotationsTaxonInput,     q => fetchAutocomplete('annomate', 'taxon',     q), annotationsOnSelect(els.annotationsTaxonInput));
+    _setupAutocomplete(els.annotationsTypeInput,      q => fetchAutocomplete('annomate', 'type',      q), annotationsOnSelect(els.annotationsTypeInput));
+    _setupAutocomplete(els.annotationsAnnotatorInput, q => fetchAutocomplete('annomate', 'annotator', q), annotationsOnSelect(els.annotationsAnnotatorInput));
+  }
 
   // Autocomplete for main search. Suggestions come from `recordings`, so each
   // one has at least one recording behind it.
@@ -1366,7 +1390,7 @@ function init() {
   );
 
   $('cta-search').addEventListener('click', () => els.searchInput.focus());
-  $('cta-browse').addEventListener('click', () => showPage('browse'));
+  if (config.hasFeature('browse')) $('cta-browse').addEventListener('click', () => showPage('browse'));
 
   loadHeaderStats();
   loadFeatured();
@@ -1382,9 +1406,11 @@ function init() {
 //   - Don't make users wait when they click Browse — start loading the
 //     moment they show intent (hover/focus) or earlier when the browser is
 //     idle anyway.
-//   - Skip the prefetch entirely if we're already on the browse/taxon path
-//     (route() will handle it) or if the user has Save-Data on (mobile data).
+//   - Skip the prefetch entirely if the site has no Browse taxa
+//     (config.features), if we're already on the browse/taxon path (route()
+//     will handle it) or if the user has Save-Data on (mobile data).
 function _prefetchBrowseInBackground() {
+  if (!config.hasFeature('browse')) return;
   if (navigator.connection?.saveData) return; // respect Save-Data header
   const pg = new URLSearchParams(location.search).get('page');
   if (pg === 'browse' || location.search.includes('taxon=')) return;

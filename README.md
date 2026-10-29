@@ -8,7 +8,7 @@ bio.acousti.ca and soil.acousti.ca run on it, and load it from `cdn.audioblast.o
 
 A `config/` folder, with:
 
-- `site.js`: its settings and copy, with the shape of `js/config.js`. It sets `source` and whatever differs from the defaults: names, logo, hero, filter examples, links, recording types and map tiles.
+- `site.js`: its settings and copy, with the shape of `js/config.js`. It sets `source` and whatever differs from the defaults: names, logo, hero, filter examples, links, recording types, map tiles, and the features it leaves out (see Features).
 - `about.html`: the About page's content, an HTML fragment that the app loads into the page.
 - `theme.css`, if the site has its own colours (see Styles).
 
@@ -32,6 +32,16 @@ The page's Content-Security-Policy and preconnect hints come from the skeleton, 
 `main.js` imports `start()` from the core and hands it the site's config. `start()` merges that config over `js/config.js` and then sets up the page, so the core's modules never read a site's values before that. The tools merge it the same way.
 
 The tools also use the app's own escaping, URL checks and taxon names, from `js/format.js`. Node loads that module, so it imports nothing and touches no browser globals.
+
+## Features
+
+A site can leave out Browse taxa, Browse traits, Browse annotations and the Recordings map. Each is on unless `config/site.js` turns it off, by the name of its page in the address: `features: { browse: false, map: false }`. `js/config.js` says what each one covers.
+
+- `build-page.mjs` leaves a feature that is off out of the page: its nav button and its page, the home page's button for Browse taxa, and the header's count of traits or annotations. Without the map, the page's Content-Security-Policy doesn't allow the basemap's images either. A name that isn't a feature stops the build.
+- The app doesn't show it or ask the API for it: no traits tab or traits column without traits, and no annotations tab without annotations. A recording keeps its own annotations. The address of a page that is off shows home.
+- Taxon views and taxon pages are not part of Browse taxa, and stay: recordings link to them.
+
+In `skeleton/index.html`, `{{#map}}…{{/map}}` marks what the map puts in the page, and the same for each feature.
 
 ## Static pages
 
@@ -60,10 +70,11 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 
 - the helpers that the app and the tools share (`js/format.js`): escaping, the two URL checks and taxon names;
 - the static-page generator, against a fake audioBlast API: a page for each recording and taxon, requests scoped to the source, a source with no records (only the sitemap and robots.txt, with a warning), and failures that must be clear;
-- the page builder: a site's page and `main.js` from its `config/`, with escaping, the defaults a site leaves out and its own basemap host; a theme link only when there is a theme; `--core` and `--check`; and a page the static-page generator builds on;
-- the default config: the empty source, and the recording-type rules.
+- the page builder: a site's page and `main.js` from its `config/`, with escaping, the defaults a site leaves out and its own basemap host; a theme link only when there is a theme; the features a site leaves out, with no gaps where they were; `--core` and `--check`; and a page the static-page generator builds on, with and without Browse taxa;
+- the default config: the empty source, the recording-type rules, and the features;
+- `prepaint.js`: the page it shows first for each kind of address, and home for a feature the site leaves out.
 
-`npm run test:browser` runs the browser checks in `tests/browser/`, with Playwright, in Chromium, Firefox and WebKit. They run the app on two check sites, made as a site is made: one on a small collection like bio's, and one on a source with no records, like soil's. A harness answers every request the pages make, so the checks never reach the live API, the tile server or the CDN. They cover the home page, search, the browse pages, a recording's page and its player, taxon pages, the About page and the recordings map, and fail on any console error. Before the first run, install the dependencies and the browsers with `npm ci` and `npx playwright install`. See `tests/browser/README.md` for how the fakes work, and what to change when the app does.
+`npm run test:browser` runs the browser checks in `tests/browser/`, with Playwright, in Chromium, Firefox and WebKit. They run the app on four check sites, made as a site is made: one on a small collection like bio's, two more on that collection that each leave features out, and one on a source with no records, like soil's. A harness answers every request the pages make, so the checks never reach the live API, the tile server or the CDN. They cover the home page, search, the browse pages, a recording's page and its player, taxon pages, the About page, the recordings map, and what a site that leaves features out shows and loads, and fail on any console error. Before the first run, install the dependencies and the browsers with `npm ci` and `npx playwright install`. See `tests/browser/README.md` for how the fakes work, and what to change when the app does.
 
 `.github/workflows/test.yml` syntax-checks the modules, the tools and the tests, then runs `npm test` on each push and pull request, and the browser checks in a job for each browser.
 

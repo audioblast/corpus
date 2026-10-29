@@ -1,4 +1,5 @@
-// Tests for the core's default config: the empty source, and the recording-type rules.
+// Tests for the core's default config: the empty source, the recording-type rules, and
+// the features.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import config from '../js/config.js';
@@ -26,5 +27,20 @@ test('the include and exclude lists match types case-insensitively', () => {
   } finally {
     config.includeRecordingTypes = saved.include;
     config.excludeRecordingTypes = saved.exclude;
+  }
+});
+
+test('every feature is on by default, and a site turns one off by naming it alone', () => {
+  for (const name of ['browse', 'traits', 'annotations', 'map']) assert.equal(config.hasFeature(name), true);
+  assert.equal(config.hasFeature('about'), true, 'a page that is not a feature is always there');
+
+  const saved = config.features;
+  try {
+    // start() puts the site's features in place of the defaults.
+    config.features = { map: false };
+    assert.equal(config.hasFeature('map'), false);
+    assert.equal(config.hasFeature('browse'), true, 'a feature the site does not name is on');
+  } finally {
+    config.features = saved;
   }
 });

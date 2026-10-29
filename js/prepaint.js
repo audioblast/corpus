@@ -8,15 +8,19 @@
   var p = new URLSearchParams(location.search);
   var onRecord = /\/r\/[^/]+\/?(index\.html)?$/.test(location.pathname);
   var onTaxon = /\/t\/[^/]+\/?(index\.html)?$/.test(location.pathname);
+  // The named page, if the page has it. This runs before the site's config is
+  // read, but a feature the site leaves out (config.features) isn't in its page,
+  // so its address is taken as one with no page, as route() in app.js takes it.
+  var named = /^(browse|traits|annotations|about|map)$/.test(p.get('page'))
+           && document.getElementById('page-' + p.get('page')) ? p.get('page') : '';
+  // In route()'s order. The traits and annotations pages are filtered by taxon,
+  // so on those a taxon in the address is a filter, not a taxon to show.
+  var filtered = named === 'traits' || named === 'annotations';
   var page = p.get('id')                        ? 'detail'
            : onRecord                           ? 'detail'
-           : onTaxon                            ? 'taxon'
-           : p.get('taxon')                     ? 'taxon'
-           : p.get('page') === 'browse'         ? 'browse'
-           : p.get('page') === 'traits'         ? 'traits'
-           : p.get('page') === 'annotations'    ? 'annotations'
-           : p.get('page') === 'about'          ? 'about'
-           : p.get('page') === 'map'            ? 'map'
+           : onTaxon && !filtered               ? 'taxon'
+           : p.get('taxon') && !filtered        ? 'taxon'
+           : named                              ? named
            :                                      'home';
   var el = document.getElementById('page-' + page);
   if (el) el.classList.add('active');
