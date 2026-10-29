@@ -41,6 +41,17 @@ async function built(t) {
   return dir;
 }
 
+// The fixture site set to a corpus version, in a new folder.
+async function pinnedTo(t, wanted) {
+  const dir = await siteCopy(t);
+  const file = path.join(dir, 'config', 'site.js');
+  const site = await fs.readFile(file, 'utf8');
+  await fs.writeFile(file, site.replace("source: 'test-source',", `source: 'test-source',\n  corpusVersion: '${wanted}',`));
+  return dir;
+}
+
+const exists = file => fs.access(file).then(() => true, () => false);
+
 test('writes index.html and main.js from the config, pinned to this version', async t => {
   const dir = await built(t);
   const page = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
@@ -120,4 +131,25 @@ test('the static-page generator builds on the page, from a config that sets only
   const recording = await fs.readFile(path.join(out, 'r', '7', 'index.html'), 'utf8');
   assert.match(recording, /<title>Song — Test<\/title>/);
   assert.match(recording, /<div id="page-detail" class="page active">/);
+});
+
+test('a site set to this corpus version gets its page', async t => {
+  const dir = await pinnedTo(t, version);
+  const { code, stderr } = await run(BUILDER, ['--site-dir', dir]);
+  assert.equal(code, 0, stderr);
+  assert.ok((await fs.readFile(path.join(dir, 'main.js'), 'utf8')).includes(`import { start } from '${CORE}/js/app.js';`));
+});
+
+test("a site set to another corpus version needs that version's builder", async t => {
+  const dir = await pinnedTo(t, '9.9.9');
+  const { code, stderr } = await run(BUILDER, ['--site-dir', dir]);
+  assert.notEqual(code, 0);
+  assert.match(stderr, /asks for corpus 9\.9\.9, but this is corpus/);
+  assert.equal(await exists(path.join(dir, 'index.html')), false, 'nothing is written');
+
+  const checked = await run(BUILDER, ['--site-dir', dir, '--check']);
+  assert.notEqual(checked.code, 0, '--check stops on it too');
+
+  const tested = await run(BUILDER, ['--site-dir', dir, '--core', './corpus']);
+  assert.equal(tested.code, 0, '--core, for testing, skips the check');
 });

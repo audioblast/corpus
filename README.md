@@ -16,16 +16,18 @@ Add a favicon, and a `CNAME` if the site has its own domain.
 
 ## A site's page
 
-`tools/build-page.mjs` writes the site's `index.html` and `main.js` from `skeleton/`, filled in from `config/site.js` and pinned to this corpus version. Commit both, and the site runs as it is, with no build step. From the site's root, with this repo checked out at the version the site uses:
+`tools/build-page.mjs` writes the site's `index.html` and `main.js` from `skeleton/`, filled in from `config/site.js` and pinned to this corpus version. Commit both, and the site runs as it is, with no build step.
+
+A site sets the corpus version it runs on in one place, `corpusVersion` in `config/site.js`. The tool stops if that isn't its own version, and the site's Pages workflow reads the version from there. From the site's root, with this repo checked out at the site's version:
 
 ```bash
 node ../corpus/tools/build-page.mjs
 ```
 
 - `--check` writes nothing, and fails if either file is not what this version writes. A site's Pages workflow runs it, so a hand edit, or a change to `config/site.js` without a rebuild, stops the deploy.
-- `--core` loads the core from somewhere else, to test a version that isn't on the CDN yet.
+- `--core` loads the core from somewhere else, to test a version that isn't on the CDN yet, and skips the version check.
 
-The page's Content-Security-Policy and preconnect hints come from the skeleton, and the basemap's host from `mapTiles`, so nothing in the page is copied by hand. To move a site to another version, run that version's `build-page.mjs` and review the diff.
+The page's Content-Security-Policy and preconnect hints come from the skeleton, and the basemap's host from `mapTiles`, so nothing in the page is copied by hand. To move a site to another version, change `corpusVersion`, run that version's `build-page.mjs` and review the diff.
 
 `main.js` imports `start()` from the core and hands it the site's config. `start()` merges that config over `js/config.js` and then sets up the page, so the core's modules never read a site's values before that. The tools merge it the same way.
 
@@ -46,9 +48,9 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 0.2.0 moves the page skeleton into corpus. To move a site from 0.1.x:
 
 1. Move `site.js`, `about.html` and `css/theme.css` into `config/`.
-2. Add `logo`, `hero` and, if the defaults don't suit the collection, `examples` to `config/site.js`.
+2. Add `corpusVersion`, `logo`, `hero` and, if the defaults don't suit the collection, `examples` to `config/site.js`.
 3. Run `build-page.mjs`, which replaces the hand-written `index.html` and `main.js`.
-4. In the Pages workflow, copy `config/` into the build, replace the version-pin check with `build-page.mjs --check`, and drop `--config site.js` from the static-page step.
+4. In the Pages workflow, read the version from `corpusVersion` in `config/site.js` instead of setting `CORPUS_VERSION`, copy `config/` into the build, replace the version-pin check with `build-page.mjs --check`, and drop `--config site.js` from the static-page step. bio's `pages.yml` shows each of these.
 
 ## Tests
 

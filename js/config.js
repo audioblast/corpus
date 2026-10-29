@@ -8,6 +8,16 @@
 
 const config = {
 
+  // ── Corpus ────────────────────────────────────────────────────────
+
+  /**
+   * The corpus version the site runs on, as '0.2.0'. tools/build-page.mjs pins the
+   * site's page to it, and stops if it is run from a different version; the site's
+   * Pages workflow reads it from here too, so the version is set in one place. Null
+   * pins the page to whichever corpus version builds it.
+   */
+  corpusVersion: null,
+
   // ── API ───────────────────────────────────────────────────────────
 
   /**

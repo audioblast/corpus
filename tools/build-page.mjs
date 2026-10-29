@@ -6,7 +6,11 @@
  * js/config.js; about.html, the About page's content; and theme.css, its colours, if
  * it has its own. This fills in skeleton/ from config/site.js and writes the site's
  * index.html and main.js, pinned to this corpus version. Commit both, and the site
- * runs as it is, with no build step. To move a site to another version, run that
+ * runs as it is, with no build step.
+ *
+ * A site sets the corpus version it runs on in one place, corpusVersion in
+ * config/site.js, which its Pages workflow reads too. This stops if that is not its
+ * own version, so to move a site to another version, change corpusVersion, run that
  * version's build-page.mjs and review the diff.
  *
  * Usage, from a site's root (where config/ is):
@@ -16,7 +20,8 @@
  *   --check     write nothing, and fail if index.html or main.js is not what this
  *               version writes. A site's Pages workflow runs this.
  *   --core      where the page loads the core from, to test a copy that isn't on the
- *               CDN yet (default this version's folder on cdn.audioblast.org)
+ *               CDN yet. It skips the version check (default this version's folder on
+ *               cdn.audioblast.org)
  */
 
 import { access, readFile, writeFile } from 'node:fs/promises';
@@ -51,6 +56,13 @@ Object.assign(config, (await import(pathToFileURL(CONFIG_PATH).href)).default);
 Object.assign(hero, config.hero);
 Object.assign(examples, config.examples);
 if (!config.source) throw new Error(`${CONFIG_PATH} sets no source`);
+
+// The site's corpus version is set once, in config/site.js. This makes pages for its
+// own version only, so a site on another version needs that version's builder.
+if (config.corpusVersion && config.corpusVersion !== VERSION && !opt('core')) {
+  throw new Error(`config/site.js asks for corpus ${config.corpusVersion}, but this is corpus ${VERSION}. `
+    + `Run build-page.mjs from corpus v${config.corpusVersion}.`);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
