@@ -1,0 +1,5 @@
+/* The empty source's colours, over the variables in the corpus's css/style.css */
+:root {
+  --accent: #8b4513;
+  --accent2: #a0522d;
+}

@@ -5,9 +5,16 @@
   "description": "Shared front end for sites built on an audioBLAST collection: the app, the page skeleton and the tools that make a site's pages.",
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "playwright test"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "wavesurfer-annotations": "0.3.0",
+    "wavesurfer-tiled-spectrogram": "0.2.0",
+    "wavesurfer.js": "8.0.3"
   }
 }

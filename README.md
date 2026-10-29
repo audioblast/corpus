@@ -60,7 +60,9 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 - the page builder: a site's page and `main.js` from its `config/`, with escaping, the defaults a site leaves out and its own basemap host; a theme link only when there is a theme; `--core` and `--check`; and a page the static-page generator builds on;
 - the default config: the empty source, and the recording-type rules.
 
-`.github/workflows/test.yml` syntax-checks the modules, the tools and the tests, then runs `npm test` on each push and pull request. Browser tests are not in CI yet.
+`npm run test:browser` runs the browser checks in `tests/browser/`, with Playwright, in Chromium, Firefox and WebKit. They run the app on two check sites, made as a site is made: one on a small collection like bio's, and one on a source with no records, like soil's. A harness answers every request the pages make, so the checks never reach the live API, the tile server or the CDN. They cover the home page, search, the browse pages, a recording's page and its player, taxon pages, the About page and the recordings map, and fail on any console error. Before the first run, install the dependencies and the browsers with `npm ci` and `npx playwright install`. See `tests/browser/README.md` for how the fakes work, and what to change when the app does.
+
+`.github/workflows/test.yml` syntax-checks the modules, the tools and the tests, then runs `npm test` on each push and pull request, and the browser checks in a job for each browser.
 
 ## Styles
 
@@ -81,5 +83,4 @@ As bio: Chrome 80, Safari 13.1, Firefox 74, Edge 80. `js/compat-check.js` and `j
 ## Still to do
 
 - Replace the copies of `esc`, `safeUrl` and `subgenusBrackets` in the tools with imports from `js/`. That needs a split the tools can load in Node.
-- Automate the browser checks in CI. So far they have been run by hand, on test shells for bio's collection and for an empty source (soil, which has no records yet).
 - Settle the licence. bio's site code is MIT.

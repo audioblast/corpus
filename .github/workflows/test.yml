@@ -1,7 +1,12 @@
 name: Test
 
-# Syntax-checks the modules, the generator and the tests, then runs the tests.
-# The tests use a fake audioBlast API, so no network access is needed.
+# Syntax-checks the modules, the generator and the tests, then runs the tests. The
+# tests use a fake audioBlast API, so no network access is needed.
+#
+# The browser checks in tests/browser/ run the app in Chromium, Firefox and WebKit,
+# one job each. The harness answers every request the pages make with fakes, so they
+# never reach the live API, the tile server or the CDN. A failed job keeps its report
+# and traces as an artifact.
 
 on:
   push:
@@ -26,3 +31,37 @@ jobs:
 
       - name: Test
         run: npm test
+
+  browser:
+    name: browser (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install the browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Browser checks
+        run: npx playwright test --project=${{ matrix.browser }}
+
+      - name: Keep the report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-checks-${{ matrix.browser }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
