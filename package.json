@@ -1,6 +1,6 @@
 {
   "name": "corpus",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Shared front end for sites built on an audioBLAST collection: the app, the page skeleton and the tools that make a site's pages.",
   "type": "module",
