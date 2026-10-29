@@ -1,25 +1,41 @@
 /* ── Design tokens ── */
 :root {
-  --bg: #fafcfa;
-  --bg2: #f0f5f0;
-  --bg3: #e8f0e8;
+  /* Neutral defaults. A site sets its own colours in its css/theme.css, which loads after this file. */
+  --bg: #ffffff;
+  --bg2: #f4f4f4;
+  --bg3: #e8e8e8;
   --surface: #ffffff;
-  --surface2: #f5f9f5;
-  --accent: #52b788;
-  --accent2: #40916c;
-  --accent-dim: rgba(82,183,136,0.12);
-  --accent-dim2: rgba(82,183,136,0.06);
-  --text: #1a1a2e;
-  --text2: #555b6e;
-  /* Darkened from #8a9099 to pass WCAG AA (4.5:1) on the --bg surface for
-     small text. Used pervasively in meta lines, table cells, monospace labels. */
-  --text3: #6c727c;
-  --border: rgba(82,183,136,0.25);
-  --border2: rgba(82,183,136,0.12);
-  --red: #c0392b;
-  --amber: #b7791f;
+  --surface2: #f7f7f7;
+  --accent: #3d3d3d;
+  --accent2: #1f1f1f;
+  --accent-dim: rgba(0,0,0,0.08);
+  --accent-dim2: rgba(0,0,0,0.04);
+  --on-accent: #ffffff;
+  --text: #1a1a1a;
+  --text2: #4d4d4d;
+  /* Muted text, passing WCAG AA (4.5:1) on the --bg surface for small text. */
+  --text3: #666666;
+  --border: rgba(0,0,0,0.18);
+  --border2: rgba(0,0,0,0.09);
+  --red: #b3261e;
+  --amber: #8a5a00;
   --radius: 10px;
   --radius-lg: 14px;
+  /* The base's fixed colours, each as a variable */
+  --header-bg: rgba(255,255,255,0.95);
+  --note-bg: rgba(138,90,0,0.08);
+  --note-border: rgba(138,90,0,0.25);
+  --error-bg: rgba(179,38,30,0.05);
+  --error-border: rgba(179,38,30,0.2);
+  --tag-taxon-border: rgba(0,0,0,0.2);
+  --tag-type-border: rgba(138,90,0,0.25);
+  --tag-type-bg: rgba(138,90,0,0.06);
+  --axis-border: rgba(0,0,0,0.2);
+  --label-text: #1a1a1a;
+  --label-bg: rgba(255,255,255,0.88);
+  --label-border: rgba(0,0,0,0.1);
+  --dot-ring: #ffffff;
+  --play-icon-on-accent: #ffffff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,7 +94,7 @@ header {
   height: 56px;
   position: sticky;
   top: 0;
-  background: rgba(250,252,250,0.95);
+  background: var(--header-bg);
   backdrop-filter: blur(8px);
   z-index: 100;
 }
@@ -186,7 +202,7 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
   border: 1px solid transparent;
   text-decoration: none;
 }
-.btn-primary { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+.btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
 .btn-ghost { background: transparent; color: var(--text2); border-color: var(--border); }
 .btn-ghost:hover { color: var(--text); border-color: var(--text3); }
@@ -226,7 +242,7 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
 .search-box input::placeholder { color: var(--text3); }
 .search-box button {
   background: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
   border: none;
   padding: 14px 24px;
   font-family: inherit;
@@ -287,7 +303,7 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
 .play-btn:hover { background: var(--accent-dim); border-color: var(--accent); }
 .play-btn svg { fill: var(--accent); width: 14px; height: 14px; margin-left: 2px; }
 .play-btn.playing { background: var(--accent); border-color: var(--accent); }
-.play-btn.playing svg { fill: #0a0f0d; margin-left: 0; }
+.play-btn.playing svg { fill: var(--play-icon-on-accent); margin-left: 0; }
 
 .card-body { min-width: 0; }
 .card-title {
@@ -322,9 +338,9 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
   color: var(--text3);
   border: 1px solid var(--border2);
 }
-.tag.taxon { color: var(--accent); border-color: rgba(92,219,110,0.2); background: var(--accent-dim); }
+.tag.taxon { color: var(--accent); border-color: var(--tag-taxon-border); background: var(--accent-dim); }
 .tag.taxon--italic { font-style: italic; }
-.tag.type { color: var(--amber); border-color: rgba(212,168,75,0.2); background: rgba(212,168,75,0.06); }
+.tag.type { color: var(--amber); border-color: var(--tag-type-border); background: var(--tag-type-bg); }
 
 .card-actions { display: flex; gap: 4px; align-items: start; }
 .icon-btn {
@@ -408,8 +424,8 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
 .browse-truncated {
   padding: 8px 12px;
   margin-bottom: 1rem;
-  background: rgba(212,168,75,0.08);
-  border: 1px solid rgba(212,168,75,0.25);
+  background: var(--note-bg);
+  border: 1px solid var(--note-border);
   border-radius: var(--radius);
   color: var(--amber);
   font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
@@ -423,9 +439,9 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
   color: var(--red);
   font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
   font-size: 13px;
-  border: 1px solid rgba(224,96,96,0.2);
+  border: 1px solid var(--error-border);
   border-radius: var(--radius-lg);
-  background: rgba(224,96,96,0.05);
+  background: var(--error-bg);
 }
 
 .empty { padding: 4rem 2rem; text-align: center; color: var(--text3); }
@@ -542,8 +558,8 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
   flex-shrink: 0;
   width: 55px;
   height: 0;
-  background: var(--bg, #fafcfa);
-  border-right: 1px solid rgba(82,183,136,0.35);
+  background: var(--bg);
+  border-right: 1px solid var(--axis-border);
   display: block;
 }
 
@@ -571,9 +587,9 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
   font-size: 9px;
   line-height: 1.5;
   letter-spacing: 0.02em;
-  color: #1a1a2e;
-  background: rgba(250,252,250,0.88);
-  border: 1px solid rgba(0,0,0,0.10);
+  color: var(--label-text);
+  background: var(--label-bg);
+  border: 1px solid var(--label-border);
   border-radius: 0 3px 3px 0;
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
 }
@@ -603,7 +619,7 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
 .ws-play:hover { background: var(--accent-dim); border-color: var(--accent); }
 .ws-play svg { fill: var(--accent); width: 11px; height: 11px; margin-left: 1px; }
 .ws-play.playing { background: var(--accent); border-color: var(--accent); }
-.ws-play.playing svg { fill: #fff; margin-left: 0; }
+.ws-play.playing svg { fill: var(--on-accent); margin-left: 0; }
 .ws-time {
   font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
   font-size: 11px;
@@ -673,13 +689,13 @@ nav button.active { color: var(--accent); background: var(--accent-dim); }
   font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace !important;
   font-size: 9px !important;
   line-height: 1.4 !important;
-  color: #1a1a2e !important;
-  background: rgba(250,252,250,0.88) !important;
+  color: var(--label-text) !important;
+  background: var(--label-bg) !important;
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   padding: 1px 5px !important;
   border-radius: 0 3px 3px 0 !important;
-  border: 1px solid rgba(0,0,0,0.10) !important;
+  border: 1px solid var(--label-border) !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
@@ -1092,7 +1108,7 @@ footer a:hover { color: var(--accent); }
 .map-dot {
   border-radius: 50%;
   background: var(--accent2);
-  border: 2px solid #fff;
+  border: 2px solid var(--dot-ring);
   box-shadow: 0 1px 4px rgba(0,0,0,0.35);
 }
 .map-popup { font-size: 13px; line-height: 1.5; color: var(--text); }

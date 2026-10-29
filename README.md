@@ -49,6 +49,18 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 
 `.github/workflows/test.yml` syntax-checks the modules, the generator and the tests, then runs `npm test` on each push and pull request. Browser tests are not in CI yet.
 
+## Styles
+
+The base stylesheet, `css/style.css`, is neutral. Every colour in it is a variable, with a neutral default in `:root`. A site sets its own colours in its own stylesheet, `css/theme.css`, which loads after the base and overrides the variables:
+
+- `--bg`, `--bg2`, `--bg3`, `--surface`, `--surface2`: the page and card backgrounds.
+- `--accent`, `--accent2`, `--accent-dim`, `--accent-dim2`, `--on-accent`: buttons, links and the logo.
+- `--text`, `--text2`, `--text3`: text, from strongest to muted. Keep `--text3` at 4.5:1 or better on the backgrounds.
+- `--border`, `--border2`, `--red`, `--amber`: lines, errors and notes.
+- `--header-bg`, `--note-bg`, `--note-border`, `--error-bg`, `--error-border`, `--tag-taxon-border`, `--tag-type-border`, `--tag-type-bg`, `--axis-border`, `--label-text`, `--label-bg`, `--label-border`, `--dot-ring`, `--play-icon-on-accent`: the remaining colours the base used to fix.
+
+The shadows are black, which is neutral, so they are not variables.
+
 ## Browser support
 
 As bio: Chrome 80, Safari 13.1, Firefox 74, Edge 80. `js/compat-check.js` and `js/nomodule-warning.js` show a message to anything older.
