@@ -15,6 +15,11 @@ import { recordingWav, TILE_PNG } from './media.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 
+// Where a check site's page loads the core from: this version's folder on the CDN, as
+// a real site's page does. The harness answers it from js/ and css/ here.
+const { version: VERSION } = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
+const CORE = `https://cdn.audioblast.org/corpus/${VERSION}`;
+
 // The libraries js/render.js loads from the CDN, each served from the npm package of
 // the same version (devDependencies in package.json), whose dist/ holds the same files.
 const LIBRARIES = {
@@ -50,14 +55,15 @@ function runTool(tool, args) {
  * Assemble a check site in a new temp folder, as a site is made: its config/ from
  * sites/<name>/, the page and bootstrap that tools/build-page.mjs writes from it, and
  * the recording and taxon pages that tools/build-static.mjs writes from the fake API,
- * as the sites' Pages workflows do. Its data is data/<name>.js. The page loads the
- * core from this version's folder on the CDN, which the harness answers from js/ and
- * css/ here.
+ * as the sites' Pages workflows do. Its data is data/<name>.js.
+ *
+ * The page is built with --core, the build for a copy of the core under test, which
+ * doesn't hold a site to the builder's corpusVersion. The check sites set none.
  */
 async function assembleSite(name) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), `corpus-check-${name}-`));
   await fs.cp(path.join(HERE, 'sites', name), dir, { recursive: true });
-  await runTool('build-page.mjs', ['--site-dir', dir]);
+  await runTool('build-page.mjs', ['--site-dir', dir, '--core', CORE]);
 
   // The page's preconnect hints open connections to the live hosts, which the
   // harness cannot answer, so the check site's page goes without them.
