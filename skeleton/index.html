@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<!-- Made by corpus tools/build-page.mjs from config/site.js. Change config/ and run it
+     again, rather than editing this file. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}}</title><!-- set by applyPage() -->
+  <meta name="description" content="{{description}}">
+
+  <!-- Content Security Policy (defence in depth — JS-blocked URLs are already
+       filtered by safeUrl(), but this stops anything that slipped past).
+       'unsafe-inline' on style-src is required because we use style="…" in
+       rendered HTML; remove it once those are migrated to classes.
+       blob: on worker-src is for the WaveSurfer spectrogram plugin, which runs
+       its FFTs in a worker built from an inline blob: URL.
+       files.audioblast.org on img-src is for the precomputed spectrogram tiles, and
+       the basemap's host, from config.mapTiles, for the recordings map. -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' https://cdn.audioblast.org;
+    worker-src 'self' blob:;
+    style-src  'self' 'unsafe-inline' https://cdn.audioblast.org;
+    img-src    {{imgSrc}};
+    media-src  https: data: blob:;
+    connect-src 'self' https://api.audioblast.org https:;
+    font-src   'self' data:;
+    object-src 'none';
+    base-uri   'self';
+    form-action 'self';
+  ">
+
+  <!-- Open TCP/TLS to the API, CDN and file origins ahead of the actual requests.
+       Free perf win — the connection setup runs in parallel with HTML/CSS parsing.
+       A preconnect only helps requests made the same way: fetch() and the tile
+       images use CORS (crossorigin), while scripts and <audio> do not. The file
+       host is requested both ways, so it has a hint of each. -->
+  <link rel="preconnect" href="https://api.audioblast.org" crossorigin>
+  <link rel="preconnect" href="https://cdn.audioblast.org">
+  <link rel="preconnect" href="https://files.audioblast.org" crossorigin>
+  <link rel="preconnect" href="https://files.audioblast.org">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{core}}/css/style.css">{{themeLink}}
+</head>
+<body>
+
+<noscript>
+  <div style="max-width:640px;margin:4rem auto;padding:1.5rem;border:1px solid #c0392b;border-radius:10px;background:#fff;font-family:-apple-system,sans-serif;color:#1a1a2e;line-height:1.6">
+    <h1 style="font-family:Georgia,serif;font-size:1.6rem;margin-bottom:0.75rem">{{siteName}} needs JavaScript</h1>
+    <p>This site fetches recordings directly from the audioBlast API in your
+       browser, so it requires JavaScript to work. Please enable it and reload.</p>
+    <p style="margin-top:1rem">You can also browse the raw API at
+       <a href="https://api.audioblast.org/data/recordings/?source={{sourceQuery}}" style="color:#40916c">api.audioblast.org</a>.</p>
+  </div>
+</noscript>
+
+<!-- ── HEADER ─────────────────────────────────────────────────── -->
+<header>
+  <span class="logo" id="logo-link" role="button" tabindex="0"
+        aria-label="{{siteName}} home">{{logo}}</span>
+
+  <nav aria-label="Primary">
+    <button data-page="home"        class="active" aria-current="page">Search</button>
+    <button data-page="browse">Browse taxa</button>
+    <button data-page="traits">Browse traits</button>
+    <button data-page="annotations">Browse annotations</button>
+    <button data-page="map">Recordings map</button>
+    <button data-page="about">About</button>
+  </nav>
+
+  <div class="header-stats">
+    <div class="header-stat" id="stat-recordings">
+      <strong>—</strong>recordings
+    </div>
+    <div class="header-stat" id="stat-taxa">
+      <strong>—</strong>taxa
+    </div>
+    <div class="header-stat" id="stat-traits">
+      <strong>—</strong>traits
+    </div>
+    <div class="header-stat" id="stat-annotations">
+      <strong>—</strong>annotations
+    </div>
+  </div>
+</header>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: HOME
+════════════════════════════════════════════════════════════════ -->
+<div id="page-home" class="page">
+
+  <!-- Hero -->
+  <div id="home-hero">
+    <section class="hero">
+      <div class="hero-text">
+        <h1>{{heroLead}}<br><em>{{heroEmphasis}}</em></h1>
+        <p>{{heroText}}</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" id="cta-search">Search recordings</button>
+          <button class="btn btn-ghost"   id="cta-browse">Browse by taxon</button>
+        </div>
+      </div>
+      <div class="hero-viz" id="hero-waveform"></div>
+    </section>
+  </div>
+
+  <!-- Search bar -->
+  <div class="search-section">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <input
+          type="text"
+          id="main-search"
+          placeholder="Search species, genus, family…"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </div>
+      <button id="search-btn">Search</button>
+    </div>
+
+  </div>
+
+  <!-- Search results (hidden until a search runs) -->
+  <div class="results-section" id="results-section" style="display:none;">
+    <div class="results-header">
+      <div class="results-count" id="results-count"></div>
+    </div>
+    <div id="results-list"></div>
+    <div id="pagination-controls" class="pagination"></div>
+  </div>
+
+  <!-- Featured / latest recordings -->
+  <div class="results-section" id="featured-section">
+    <div class="results-header">
+      <div class="results-count">
+        Recent additions
+      </div>
+    </div>
+    <div id="featured-list">
+      <div class="loading"><div class="spinner"></div>Loading recordings…</div>
+    </div>
+  </div>
+
+</div><!-- /page-home -->
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: BROWSE
+════════════════════════════════════════════════════════════════ -->
+<div id="page-browse" class="page">
+  <div class="browse-section">
+    <h2 class="browse-title">Browse by taxon</h2>
+    <p class="browse-subtitle" id="browse-subtitle">Taxonomic index of the {{siteName}} collection</p>
+    <div id="browse-list">
+      <div class="loading"><div class="spinner"></div>Loading taxa…</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: TRAITS
+════════════════════════════════════════════════════════════════ -->
+<div id="page-traits" class="page">
+  <div class="browse-section">
+    <h2 class="browse-title">Browse traits</h2>
+    <p class="browse-subtitle">Acoustic and biological measurements in the {{siteName}} collection</p>
+
+    <div class="traits-filters">
+      <div class="traits-filter-row">
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="traits-taxon">Taxon</label>
+          <input type="text" id="traits-taxon" class="traits-filter-input"
+                 placeholder="e.g. {{exampleTaxon}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="traits-trait">Trait</label>
+          <input type="text" id="traits-trait" class="traits-filter-input"
+                 placeholder="e.g. {{exampleTrait}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field traits-filter-field--short">
+          <label class="traits-filter-label" for="traits-value">Value</label>
+          <input type="text" id="traits-value" class="traits-filter-input"
+                 placeholder="e.g. {{exampleValue}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field traits-filter-field--short">
+          <label class="traits-filter-label" for="traits-calltype">Call type</label>
+          <input type="text" id="traits-calltype" class="traits-filter-input"
+                 placeholder="e.g. {{exampleCallType}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field traits-filter-field--short">
+          <label class="traits-filter-label" for="traits-sex">Sex</label>
+          <input type="text" id="traits-sex" class="traits-filter-input"
+                 placeholder="e.g. {{exampleSex}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field traits-filter-field--btn">
+          <button class="btn btn-primary" id="traits-search-btn">Search</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-header">
+      <div class="results-count" id="traits-count"></div>
+    </div>
+    <div id="traits-list"></div>
+    <div id="traits-pagination" class="pagination"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: ANNOTATIONS
+════════════════════════════════════════════════════════════════ -->
+<div id="page-annotations" class="page">
+  <div class="browse-section">
+    <h2 class="browse-title">Browse annotations</h2>
+    <p class="browse-subtitle">Recording annotations from ann-o-mate</p>
+
+    <div class="traits-filters">
+      <div class="traits-filter-row">
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="annotations-taxon">Taxon</label>
+          <input type="text" id="annotations-taxon" class="traits-filter-input"
+                 placeholder="e.g. {{exampleTaxon}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="annotations-type">Type</label>
+          <input type="text" id="annotations-type" class="traits-filter-input"
+                 placeholder="annotation type" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="annotations-annotator">Annotator</label>
+          <input type="text" id="annotations-annotator" class="traits-filter-input"
+                 placeholder="annotator name" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field traits-filter-field--btn">
+          <button class="btn btn-primary" id="annotations-search-btn">Search</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-header">
+      <div class="results-count" id="annotations-count"></div>
+    </div>
+    <div id="annotations-list"></div>
+    <div id="annotations-pagination" class="pagination"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: RECORDINGS MAP
+════════════════════════════════════════════════════════════════ -->
+<div id="page-map" class="page">
+  <div class="browse-section">
+    <h2 class="browse-title">Recordings map</h2>
+    <p class="browse-subtitle">Where the specimens that recordings are of were collected, not where the sound was recorded</p>
+    <div class="results-header">
+      <div class="results-count" id="map-count" role="status" aria-live="polite"></div>
+    </div>
+    <p class="map-note" id="map-note"></p>
+    <div id="map-canvas" class="map-canvas" role="region" aria-label="Map of the places the specimens were collected"></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: ABOUT
+════════════════════════════════════════════════════════════════ -->
+<div id="page-about" class="page">
+  <!-- content loaded from {{aboutUrl}} -->
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: DETAIL
+════════════════════════════════════════════════════════════════ -->
+<div id="page-detail" class="page">
+  <div class="detail-panel">
+    <button class="detail-back" id="detail-back">← back to results</button>
+    <div id="detail-content">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: TAXON
+════════════════════════════════════════════════════════════════ -->
+<div id="page-taxon" class="page">
+  <div class="detail-panel">
+    <button class="detail-back" id="taxon-back">← back</button>
+    <div id="taxon-content">
+      <div class="loading"><div class="spinner"></div>Loading…</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── FOOTER ─────────────────────────────────────────────────── -->
+<footer>
+  Data provided by
+  <a href="https://audioblast.org" target="_blank" rel="noopener">audioBlast</a>
+  via <a href="https://api.audioblast.org" target="_blank" rel="noopener">audioBlast API</a>
+  · Collection: <span id="footer-collection">{{siteName}}</span> ·
+  <a href="https://github.com/audioblast" target="_blank" rel="noopener">GitHub</a>
+</footer>
+
+<!-- Global audio element (one instance, managed by player.js) -->
+<audio id="global-audio" preload="none"></audio>
+
+<!-- API call counter -->
+<div id="api-counter" class="api-counter">
+  <span class="api-counter-label"><a href="https://api.audioblast.org" target="_blank" rel="noopener">API</a></span>
+  <span id="api-counter-count">0</span>
+</div>
+
+<!-- Old-browser warning. `nomodule` runs in browsers that don't support ES
+     modules at all (IE11, Edge Legacy, Safari ≤10, etc.). The compat-check
+     script runs everywhere else and verifies the app's actual feature floor
+     (?./??, Promise.allSettled, CSS.escape, …) before app.js parses. -->
+<script nomodule src="{{core}}/js/nomodule-warning.js"></script>
+<script src="{{core}}/js/compat-check.js"></script>
+
+<!-- WaveSurfer is lazy-loaded by render.js on the first detail-page view
+     (loadWaveSurfer in the corpus core, render.js) — keeps ~300 KB of player code off the
+     critical path for users who never open a recording. -->
+
+<!-- Pre-activate the correct page from URL params before first paint -->
+<script src="{{core}}/js/prepaint.js"></script>
+
+<!-- App (ES module) -->
+<script type="module" src="main.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,128 @@
+#!/usr/bin/env node
+/**
+ * build-page.mjs — make a site's index.html and main.js from the page skeleton.
+ *
+ * A site keeps its settings and copy in config/: site.js, of the shape of
+ * js/config.js; about.html, the About page's content; and theme.css, its colours, if
+ * it has its own. This fills in skeleton/ from config/site.js and writes the site's
+ * index.html and main.js, pinned to this corpus version. Commit both, and the site
+ * runs as it is, with no build step. To move a site to another version, run that
+ * version's build-page.mjs and review the diff.
+ *
+ * Usage, from a site's root (where config/ is):
+ *   node <corpus>/tools/build-page.mjs [--site-dir .] [--check] [--core URL]
+ *
+ *   --site-dir  the site's root (default .)
+ *   --check     write nothing, and fail if index.html or main.js is not what this
+ *               version writes. A site's Pages workflow runs this.
+ *   --core      where the page loads the core from, to test a copy that isn't on the
+ *               CDN yet (default this version's folder on cdn.audioblast.org)
+ */
+
+import { access, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const CORPUS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// ── Arguments ─────────────────────────────────────────────────────
+const args = process.argv.slice(2);
+const opt = (name, dflt) => {
+  const i = args.indexOf('--' + name);
+  return i >= 0 ? args[i + 1] : dflt;
+};
+const { version: VERSION } = JSON.parse(await readFile(path.join(CORPUS, 'package.json'), 'utf8'));
+const SITE_DIR = path.resolve(opt('site-dir', '.'));
+const CHECK    = args.includes('--check');
+const CORE     = opt('core', `https://cdn.audioblast.org/corpus/${VERSION}`).replace(/\/$/, '');
+// The core's address goes into the page's attributes and main.js's import as it is.
+if (/['"\\<>\s]/.test(CORE)) throw new Error(`--core ${CORE} is not an address the page can use`);
+
+const exists = file => access(file).then(() => true, () => false);
+const CONFIG_PATH = path.join(SITE_DIR, 'config', 'site.js');
+if (!await exists(CONFIG_PATH)) throw new Error(`No config/site.js in ${SITE_DIR}`);
+
+// The site's config, merged over the core's defaults as start() merges it in the app.
+// The hero and the examples are merged field by field, so a site can set just one.
+const config = (await import(pathToFileURL(path.join(CORPUS, 'js', 'config.js')).href)).default;
+const hero = { ...config.hero };
+const examples = { ...config.examples };
+Object.assign(config, (await import(pathToFileURL(CONFIG_PATH).href)).default);
+Object.assign(hero, config.hero);
+Object.assign(examples, config.examples);
+if (!config.source) throw new Error(`${CONFIG_PATH} sets no source`);
+
+// ── Helpers ───────────────────────────────────────────────────────
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// The origin of an address, or '' if it has none that can go in the policy as it is.
+function originOf(url) {
+  try {
+    const { origin } = new URL(url);
+    return /^https?:\/\/[\w.:-]+$/.test(origin) ? origin : '';
+  } catch {
+    return '';
+  }
+}
+
+// Each {{name}} in a skeleton file is filled from `values`. A name this doesn't fill
+// is an error, so the skeleton and this tool can't drift apart unnoticed.
+async function fill(file, values) {
+  const text = (await readFile(path.join(CORPUS, 'skeleton', file), 'utf8')).replace(/\r\n/g, '\n');
+  return text.replace(/\{\{(\w+)\}\}/g, (_, name) => {
+    if (!(name in values)) throw new Error(`skeleton/${file} has {{${name}}}, which build-page.mjs does not fill`);
+    return values[name];
+  });
+}
+
+// ── Fill in the skeleton ──────────────────────────────────────────
+const [logoFirst, logoSecond = ''] = Array.isArray(config.logo) ? config.logo : [config.logo ?? config.siteName];
+
+// The page shows images from itself, the audio host's spectrogram tiles, the
+// basemap's tile server and the core (Leaflet's icons). The basemap's host comes
+// from config.mapTiles, so the policy and the map can't disagree.
+const imgSrc = [...new Set(["'self'", 'data:', 'https://files.audioblast.org',
+  originOf(config.mapTiles?.url), 'https://cdn.audioblast.org'])].filter(Boolean).join(' ');
+const theme = await exists(path.join(SITE_DIR, 'config', 'theme.css'));
+
+const files = {
+  'index.html': await fill('index.html', {
+    title:           esc(config.siteTagline ? `${config.siteName} — ${config.siteTagline}` : config.siteName),
+    description:     esc(config.siteDescription),
+    siteName:        esc(config.siteName),
+    sourceQuery:     esc(encodeURIComponent(config.source)),
+    logo:            esc(logoFirst) + (logoSecond ? `<span>${esc(logoSecond)}</span>` : ''),
+    heroLead:        esc(hero.lead),
+    heroEmphasis:    esc(hero.emphasis),
+    heroText:        esc(hero.text),
+    exampleTaxon:    esc(examples.taxon),
+    exampleTrait:    esc(examples.trait),
+    exampleValue:    esc(examples.value),
+    exampleCallType: esc(examples.callType),
+    exampleSex:      esc(examples.sex),
+    aboutUrl:        esc(config.aboutUrl),
+    imgSrc,
+    core:            CORE,
+    themeLink:       theme ? '\n  <link rel="stylesheet" href="config/theme.css">' : '',
+  }),
+  'main.js': await fill('main.js', { core: CORE }),
+};
+
+// ── Write, or check ───────────────────────────────────────────────
+if (CHECK) {
+  const stale = [];
+  for (const [name, text] of Object.entries(files)) {
+    const now = await readFile(path.join(SITE_DIR, name), 'utf8').catch(() => null);
+    if (now?.replace(/\r\n/g, '\n') !== text) stale.push(name);
+  }
+  if (stale.length) {
+    console.error(`${stale.join(' and ')} ${stale.length > 1 ? 'are' : 'is'} not what corpus ${VERSION} makes from config/. `
+      + 'Run tools/build-page.mjs from that version, and commit the result.');
+    process.exit(1);
+  }
+  console.log(`index.html and main.js are what corpus ${VERSION} makes from config/.`);
+} else {
+  for (const [name, text] of Object.entries(files)) await writeFile(path.join(SITE_DIR, name), text);
+  console.log(`Wrote index.html and main.js for corpus ${VERSION}, loading the core from ${CORE}.`);
+}

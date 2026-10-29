@@ -10,6 +10,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fakeApi } from './fake-api.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GENERATOR = path.join(HERE, '..', 'tools', 'build-static.mjs');
@@ -28,27 +29,6 @@ const RECORDINGS = [
     author: 'A. Recordist', duration: 83, mime: 'audio/x-wav',
   },
 ];
-
-// A fake API with the two collection endpoints. It answers with the given rows, and
-// records each source it is asked for, so a test can check the requests are scoped.
-async function fakeApi({ taxa = [], recordings = [] }) {
-  const sources = new Set();
-  const server = http.createServer((req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    sources.add(url.searchParams.get('source'));
-    const rows = { '/data/taxa/': taxa, '/data/recordings/': recordings }[url.pathname];
-    if (!rows) return res.writeHead(404).end();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ data: rows, last_page: rows.length ? 1 : 0 }));
-  });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  return {
-    sources,
-    url: `http://127.0.0.1:${server.address().port}`,
-    close: () => new Promise(resolve => server.close(resolve)),
-  };
-}
 
 // Runs the generator into a new folder with the given arguments.
 async function build(args, api) {

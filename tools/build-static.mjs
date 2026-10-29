@@ -13,12 +13,13 @@
  * without JavaScript. With JavaScript the app takes the same page over and shows
  * the player or the taxon view (js/app.js).
  *
- * Usage, from a site's root (where its config and page are):
+ * Usage, from a site's root (where config/ and index.html are):
  *   node <corpus>/tools/build-static.mjs --site https://example.org [--out _site]
- *                               [--config site.js] [--page index.html]
+ *                               [--config config/site.js] [--page index.html]
  *                               [--base /] [--limit-recordings N] [--limit-taxa N]
  *
- *   --config  the site's config module, of the shape of js/config.js (default site.js)
+ *   --config  the site's config module, of the shape of js/config.js, merged over the
+ *             core's defaults as the app merges it (default config/site.js)
  *   --page    the site's index.html, which the pages are built from (default index.html)
  *   --site    the site's address (required)
  *   --api     the audioBlast API to read (default https://api.audioblast.org)
@@ -29,7 +30,7 @@
 
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const LIST_CAP = 100;                         // recordings listed on a taxon page
 
@@ -44,7 +45,7 @@ const required = name => {
   if (!v) throw new Error(`--${name} is required`);
   return v;
 };
-const CONFIG_PATH = path.resolve(opt('config', 'site.js'));
+const CONFIG_PATH = path.resolve(opt('config', 'config/site.js'));
 const PAGE_PATH   = path.resolve(opt('page', 'index.html'));
 const LIMIT_R = Number(opt('limit-recordings', 0));
 const LIMIT_T = Number(opt('limit-taxa', 0));
@@ -53,8 +54,10 @@ const SITE    = required('site').replace(/\/$/, '');
 const OUT     = path.resolve(opt('out', '.'));
 const API     = opt('api', 'https://api.audioblast.org').replace(/\/$/, '');
 
-// The site's config: the default export of its config module.
-const config = (await import(pathToFileURL(CONFIG_PATH).href)).default;
+// The site's config, merged over the core's defaults as start() merges it in the app.
+const CORPUS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const config = (await import(pathToFileURL(path.join(CORPUS, 'js', 'config.js')).href)).default;
+Object.assign(config, (await import(pathToFileURL(CONFIG_PATH).href)).default);
 
 // The collection comes from the site's config, as it does for the app: its source,
 // name, recording types, audio URLs and original-page links.

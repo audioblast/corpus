@@ -905,7 +905,7 @@ let _aboutLoadPromise = null;
 function loadAbout() {
   if (_aboutLoadPromise) return _aboutLoadPromise;
   const container = document.getElementById('page-about');
-  _aboutLoadPromise = fetch('about.html')
+  _aboutLoadPromise = fetch(config.aboutUrl)
     .then(r => {
       if (!r.ok) throw new Error(r.statusText);
       return r.text();
@@ -1179,9 +1179,9 @@ async function route() {
 }
 
 // ── Apply config to the DOM ───────────────────────────────────────
-// The title of every page that is not a recording's.
+// The title of every page that is not a recording's, as tools/build-page.mjs writes it.
 function siteTitle() {
-  return `${config.siteName} — ${config.siteTagline}`;
+  return config.siteTagline ? `${config.siteName} — ${config.siteTagline}` : config.siteName;
 }
 
 function applyConfig() {

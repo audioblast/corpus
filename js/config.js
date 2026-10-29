@@ -1,9 +1,9 @@
 /**
  * config.js — Defaults for every site built on the corpus core.
  *
- * A site's own config (its site.js) has the same shape. start() in app.js merges
- * it over these defaults before the page is set up, and the static-page generator
- * reads the site's config directly. Only `source` has no default: a site must set it.
+ * A site's own config (its config/site.js) has the same shape. start() in app.js
+ * merges it over these defaults before the page is set up, and the tools in tools/
+ * merge it the same way. Only `source` has no default: a site must set it.
  */
 
 const config = {
@@ -20,6 +20,38 @@ const config = {
   siteName:        'Recordings',
   siteTagline:     '',
   siteDescription: 'Sound recordings.',
+
+  /**
+   * The logo in the header: the site's name in two parts, the second in the accent
+   * colour, as ['Bio', 'Acoustica']. Null shows siteName in one part.
+   */
+  logo: null,
+
+  // ── Copy ──────────────────────────────────────────────────────────
+  // The words tools/build-page.mjs writes into the site's page. A site can set any
+  // of a group's fields, and the others come from here.
+
+  /** The home page's hero: a first line, a second line in italics, and a paragraph. */
+  hero: {
+    lead:     'Listen to the',
+    emphasis: 'recordings',
+    text:     'Sound recordings from the audioBLAST platform.',
+  },
+
+  /**
+   * The examples in the empty filter boxes on the traits and annotations pages,
+   * after "e.g.". Pick values the collection has.
+   */
+  examples: {
+    taxon:    'Gryllus',
+    trait:    'carrier frequency',
+    value:    '5000',
+    callType: 'calling song',
+    sex:      'male',
+  },
+
+  /** The About page's content: an HTML fragment, which the app loads into the page. */
+  aboutUrl: 'config/about.html',
 
   // ── Audio files ───────────────────────────────────────────────────
 
@@ -107,7 +139,7 @@ const config = {
 
   /**
    * Basemap for the recordings map (js/map.js): the tile URL template and the
-   * attribution its tiles need. The host of the URL must also be allowed on
+   * attribution its tiles need. tools/build-page.mjs allows the URL's host on
    * img-src in the page's Content-Security-Policy. The OpenStreetMap tile
    * server is for light use only, so a busy site should point this at a tile
    * provider or a basemap of its own.
