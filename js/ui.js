@@ -2,15 +2,11 @@
  * ui.js — Shared UI helpers for corpus sites
  */
 
-/** Escape a string for safe HTML insertion */
-export function esc(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { esc } from './format.js';
+
+// esc is in format.js, which the tools share. It is exported from here too,
+// for the modules that import it from ui.js.
+export { esc };
 
 /** Shared play/pause SVG icons used by player.js and render.js */
 export const ICON_PLAY  = `<svg viewBox="0 0 10 12"><polygon points="0,0 10,6 0,12"/></svg>`;

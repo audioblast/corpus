@@ -31,6 +31,8 @@ The page's Content-Security-Policy and preconnect hints come from the skeleton, 
 
 `main.js` imports `start()` from the core and hands it the site's config. `start()` merges that config over `js/config.js` and then sets up the page, so the core's modules never read a site's values before that. The tools merge it the same way.
 
+The tools also use the app's own escaping, URL checks and taxon names, from `js/format.js`. Node loads that module, so it imports nothing and touches no browser globals.
+
 ## Static pages
 
 From the site's root, after its pages are assembled (see bio's `.github/workflows/pages.yml`):
@@ -56,6 +58,7 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 
 `npm test` runs the tests in `tests/`, with no network access:
 
+- the helpers that the app and the tools share (`js/format.js`): escaping, the two URL checks and taxon names;
 - the static-page generator, against a fake audioBlast API: a page for each recording and taxon, requests scoped to the source, a source with no records (only the sitemap and robots.txt, with a warning), and failures that must be clear;
 - the page builder: a site's page and `main.js` from its `config/`, with escaping, the defaults a site leaves out and its own basemap host; a theme link only when there is a theme; `--core` and `--check`; and a page the static-page generator builds on;
 - the default config: the empty source, and the recording-type rules.
@@ -82,5 +85,4 @@ As bio: Chrome 80, Safari 13.1, Firefox 74, Edge 80. `js/compat-check.js` and `j
 
 ## Still to do
 
-- Replace the copies of `esc`, `safeUrl` and `subgenusBrackets` in the tools with imports from `js/`. That needs a split the tools can load in Node.
 - Settle the licence. bio's site code is MIT.

@@ -17,42 +17,18 @@
  * no-op for this file.
  */
 
-import { esc, showEmpty, ICON_PLAY, ICON_PAUSE } from './ui.js';
+import { esc, safeUrl, subgenusBrackets, ITALIC_RANKS } from './format.js';
+import { showEmpty, ICON_PLAY, ICON_PAUSE } from './ui.js';
 import { togglePlay } from './player.js';
 import config from './config.js';
 
-// Ranks whose names are italicised under the ICZN / ICN codes.
-export const ITALIC_RANKS = new Set([
-  'genus', 'subgenus', 'species', 'subspecies', 'variety', 'form', 'infraspecies',
-]);
+// safeUrl, subgenusBrackets and ITALIC_RANKS are in format.js, which the
+// static-page generator shares. They are exported from here too, for the
+// modules that import them from render.js.
+export { safeUrl, subgenusBrackets, ITALIC_RANKS };
 
 // Placeholder taxon string returned by the API for unidentified recordings.
 export const UNKNOWN_TAXON = 'Unknown species';
-
-// Return url unchanged if it uses a safe protocol; empty string otherwise.
-// Blocks javascript:, data:, vbscript:, etc. from API-supplied URLs.
-export function safeUrl(url) {
-  if (!url) return '';
-  const s = String(url).trim();
-  if (/^(https?:|mailto:|\/|#|\?)/i.test(s)) return s;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return ''; // unrecognised scheme — reject
-  return s; // relative path
-}
-
-/**
- * Insert brackets around a subgenus in a taxonomic name.
- * Under ICZN, subgenus names begin with an uppercase letter while species
- * and subspecies epithets begin with lowercase — so capitalisation alone
- * identifies the subgenus without needing the rank.
- *   "Aus Bus"         → "Aus (Bus)"
- *   "Aus Bus cus"     → "Aus (Bus) cus"
- *   "Aus bus cus"     → "Aus bus cus"  (no subgenus, 'bus' is lowercase)
- */
-export function subgenusBrackets(name) {
-  const parts = name.split(' ');
-  if (parts.length < 2 || !/^[A-Z]/.test(parts[1])) return name;
-  return `${parts[0]} (${parts[1]})${parts.length > 2 ? ' ' + parts.slice(2).join(' ') : ''}`;
-}
 
 // Relative URL of the pre-built page for a recording or taxon
 // (tools/build-static.mjs). The app is served from the site root, so it is

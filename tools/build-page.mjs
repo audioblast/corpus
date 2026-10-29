@@ -28,6 +28,8 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { esc } from '../js/format.js';
+
 const CORPUS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // ── Arguments ─────────────────────────────────────────────────────
@@ -65,9 +67,6 @@ if (config.corpusVersion && config.corpusVersion !== VERSION && !opt('core')) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
-const esc = s => String(s ?? '').replace(/[&<>"']/g,
-  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
 // The origin of an address, or '' if it has none that can go in the policy as it is.
 function originOf(url) {
   try {

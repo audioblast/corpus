@@ -32,6 +32,8 @@ import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { esc, httpUrl, subgenusBrackets, ITALIC_RANKS } from '../js/format.js';
+
 const LIST_CAP = 100;                         // recordings listed on a taxon page
 
 // ── Arguments ─────────────────────────────────────────────────────
@@ -70,27 +72,11 @@ const browseLink = config.browseTaxonUrl('Gryllus');
 const BROWSE = browseLink ? new URL(browseLink).origin : null;
 
 // ── Helpers ───────────────────────────────────────────────────────
-const esc = s => String(s ?? '').replace(/[&<>"']/g,
-  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-const safeUrl = u => {
-  const s = String(u ?? '').trim();
-  return /^https?:\/\//i.test(s) ? s : '';
-};
-
 const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// "Aus Bus cus" -> "Aus (Bus) cus" (as js/render.js does).
-function subgenusBrackets(name) {
-  const p = name.split(' ');
-  if (p.length < 2 || !/^[A-Z]/.test(p[1])) return name;
-  return `${p[0]} (${p[1]})${p.length > 2 ? ' ' + p.slice(2).join(' ') : ''}`;
-}
-
-const ITALIC = new Set(['genus', 'subgenus', 'species', 'subspecies', 'variety', 'form', 'infraspecies']);
 const nameHtml = (name, rank) => {
   const n = esc(subgenusBrackets(name));
-  return ITALIC.has(String(rank || '').toLowerCase()) ? `<i>${n}</i>` : n;
+  return ITALIC_RANKS.has(String(rank || '').toLowerCase()) ? `<i>${n}</i>` : n;
 };
 
 const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -269,12 +255,12 @@ for (const r of recs) {
   const id    = String(r.id);
   const title = clean(r.name) || clean(r.taxon) || 'Untitled recording';
   const t     = taxonOf(r);
-  const audio = safeUrl(config.resolveFileUrl(r.filename));
-  const lic   = safeUrl(r.license);
+  const audio = httpUrl(config.resolveFileUrl(r.filename));
+  const lic   = httpUrl(r.license);
   const dur   = fmtDuration(r.duration);
   const taxonName = clean(r.taxon);
   const canonical = `${SITE}/r/${id}/`;
-  const original  = safeUrl(r.info_url || config.recordingPageUrl(id));
+  const original  = httpUrl(r.info_url || config.recordingPageUrl(id));
 
   const rows = [
     ['Taxon',         taxonName && t
