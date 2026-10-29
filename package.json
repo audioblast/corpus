@@ -1,0 +1,13 @@
+{
+  "name": "corpus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared front end for sites built on an audioBLAST collection: the app and the static-page generator.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
