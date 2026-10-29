@@ -83,6 +83,6 @@ The shadows are black, which is neutral, so they are not variables.
 
 As bio: Chrome 80, Safari 13.1, Firefox 74, Edge 80. `js/compat-check.js` and `js/nomodule-warning.js` show a message to anything older.
 
-## Still to do
+## Licence
 
-- Settle the licence. bio's site code is MIT.
+GNU General Public License, version 2 or (at your option) any later version: see `LICENSE`. The libraries in `js/vendor/` keep their own licences, with a `LICENSE` file in each folder: BSD-2-Clause for Leaflet and MIT for Leaflet.markercluster. Both are compatible with the GPL.
