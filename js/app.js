@@ -42,6 +42,8 @@ import {
   renderPagination,
 } from './ui.js';
 
+import { isOwnLevel } from './format.js';
+
 import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
 
 // Must match the page size actually used for recording queries — the
@@ -666,7 +668,7 @@ function _buildTaxaTree(rows, traitRows = []) {
     if (!parent[name]) parent[name] = { name, rank, count: 0, traits: 0, children: Object.create(null) };
     parent[name].count  += count;
     parent[name].traits += traits;
-    return parent[name].children;
+    return parent[name];
   };
 
   for (const [taxon, count] of taxonCounts) {
@@ -684,13 +686,16 @@ function _buildTaxaTree(rows, traitRows = []) {
     // A taxon of one of these ranks is its own level: an order's Order is itself.
     // Its recordings are counted there, and not again in a row of its own below it.
     let lvl = root;
-    let atOwnLevel = false;
+    let own = null;
     for (const [name, levelRank] of levels) {
       if (!name) continue;
-      lvl = ensure(lvl, name, levelRank, count, traits);
-      if (name === taxon) { atOwnLevel = true; break; }
+      const node = ensure(lvl, name, levelRank, count, traits);
+      if (isOwnLevel(taxon, getField(r, 'Rank'), levelRank, name)) { own = node; break; }
+      lvl = node.children;
     }
-    if (!atOwnLevel && !lvl[taxon]) lvl[taxon] = { name: taxon, rank, count, traits, children: {}, isLeaf: true };
+    // The row is the taxon of recordings of its own, which _taxonPageLink links by name
+    if (own) own.recorded = true;
+    else if (!lvl[taxon]) lvl[taxon] = { name: taxon, rank, count, traits, children: {}, recorded: true };
   }
 
   return root;
@@ -973,11 +978,12 @@ let _taxonPages = null;
 
 // Link to a tree row's pre-built page, or '' where there is none. An ancestor's
 // name can be shared with a taxon of another rank, so its rank has to match; a
-// leaf is the taxon of its own recordings, so its name is enough.
+// row with recordings of its own is the taxon they were joined to by name, so its
+// name is enough, with or without a rank.
 function _taxonPageLink(node) {
   const row = _taxonPages?.get(node.name);
   if (!row) return '';
-  if (!node.isLeaf && String(row.rank ?? '').toLowerCase() !== node.rank.toLowerCase()) return '';
+  if (!node.recorded && String(row.rank ?? '').toLowerCase() !== node.rank.toLowerCase()) return '';
   const href = staticPageHref('t', row.id);
   return href
     ? `<a class="tree-page-link" href="${esc(href)}" title="Page for this taxon" aria-label="Page for ${esc(node.name)}">↗</a>`

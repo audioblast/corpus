@@ -3,7 +3,7 @@
 // shows that the module loads in Node, as the tools need.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { esc, safeUrl, httpUrl, subgenusBrackets, ITALIC_RANKS } from '../js/format.js';
+import { esc, safeUrl, httpUrl, subgenusBrackets, ITALIC_RANKS, isOwnLevel } from '../js/format.js';
 
 test('esc escapes the characters that are special in HTML text and attributes', () => {
   assert.equal(esc(`<a href="x" title='y'>Tom & Jerry</a>`),
@@ -55,5 +55,22 @@ test('names are italic at genus rank and below', () => {
   // Callers lower-case the rank first.
   for (const rank of ['family', 'tribe', 'order', 'Genus']) {
     assert.equal(ITALIC_RANKS.has(rank), false, rank);
+  }
+});
+
+test('isOwnLevel finds a taxon at its own level, by its name and its rank', () => {
+  assert.equal(isOwnLevel('Crassiclitellata', 'Order', 'Order', 'Crassiclitellata'), true);
+  assert.equal(isOwnLevel('Crassiclitellata', 'order', 'Order', 'Crassiclitellata'), true);
+  assert.equal(isOwnLevel('Crassiclitellata', 'Order', 'Class', 'Clitellata'), false);
+  assert.equal(isOwnLevel('Aus', 'Genus', 'Genus', ''), false);
+  // A genus that shares its name with its class is the genus, not the class
+  assert.equal(isOwnLevel('Aus', 'Genus', 'Class', 'Aus'), false);
+  assert.equal(isOwnLevel('Aus', 'Genus', 'Genus', 'Aus'), true);
+});
+
+test('isOwnLevel goes by the name alone for a taxon with no rank', () => {
+  for (const rank of ['', null, undefined]) {
+    assert.equal(isOwnLevel('Aus', rank, 'Class', 'Aus'), true, String(rank));
+    assert.equal(isOwnLevel('Aus', rank, 'Class', 'Bus'), false, String(rank));
   }
 });

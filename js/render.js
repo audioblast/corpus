@@ -17,7 +17,7 @@
  * no-op for this file.
  */
 
-import { esc, safeUrl, subgenusBrackets, ITALIC_RANKS } from './format.js';
+import { esc, safeUrl, subgenusBrackets, ITALIC_RANKS, isOwnLevel } from './format.js';
 import { showEmpty, ICON_PLAY, ICON_PAUSE } from './ui.js';
 import { togglePlay } from './player.js';
 import config from './config.js';
@@ -1656,8 +1656,9 @@ function recordingCard(r) {
   // Older joined rows used capitalised rank fields; /data/taxa/
   // returns lowercase — accept either via getField(). A taxon that is itself an
   // order or a family has its own tag, below, and not one for its rank as well.
-  const order   = getField(r, 'Order') !== taxon ? getField(r, 'Order') : '';
-  const family  = getField(r, 'Family') !== taxon ? getField(r, 'Family') : '';
+  const rank    = r.Rank || r.rank || '';
+  const order   = isOwnLevel(taxon, rank, 'Order', getField(r, 'Order')) ? '' : getField(r, 'Order');
+  const family  = isOwnLevel(taxon, rank, 'Family', getField(r, 'Family')) ? '' : getField(r, 'Family');
   const idStr   = esc(String(id));
   const pageHref = staticPageHref('r', id, type);
 
@@ -1680,7 +1681,7 @@ function recordingCard(r) {
         ${type                  ? `<span class="tag type">${esc(type)}</span>`   : ''}
         ${order                 ? `<span class="tag">${esc(order)}</span>`       : ''}
         ${family                ? `<span class="tag">${esc(family)}</span>`      : ''}
-        ${taxon !== UNKNOWN_TAXON ? `<span class="tag taxon${ITALIC_RANKS.has((r.Rank || r.rank || '').toLowerCase()) ? ' taxon--italic' : ''}">${esc(subgenusBrackets(taxon))}</span>` : ''}
+        ${taxon !== UNKNOWN_TAXON ? `<span class="tag taxon${ITALIC_RANKS.has(String(rank).toLowerCase()) ? ' taxon--italic' : ''}">${esc(subgenusBrackets(taxon))}</span>` : ''}
       </div>
     </div>
 
@@ -1851,8 +1852,8 @@ function buildTaxonHierarchy(r, onTaxonSearch) {
   // or as a species where it has none. A taxon above species, as an order, already
   // has its rank's line, and is not given another.
   const taxon = getField(r, 'taxon');
-  if (!getField(r, 'Species') && taxon && !ranks.some(([, v]) => v === taxon)) {
-    const rank = String(getField(r, 'Rank'));
+  const rank  = String(getField(r, 'Rank'));
+  if (!getField(r, 'Species') && taxon && !ranks.some(([level, name]) => isOwnLevel(taxon, rank, level, name))) {
     ranks.push([rank ? rank[0].toUpperCase() + rank.slice(1).toLowerCase() : 'Species', taxon]);
   }
 

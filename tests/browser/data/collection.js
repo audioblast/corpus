@@ -6,7 +6,8 @@
 //   - three families of Orthoptera, and a name with a subgenus ("Gryllus Gryllus
 //     campestris", shown as "Gryllus (Gryllus) campestris");
 //   - recordings identified to species, to a genus with a species below it, and
-//     to a family with none below it, as soil's are identified to an order;
+//     to a family with none below it, as soil's are identified to an order. The
+//     family's row gives no rank, so the tree has its name alone to place it by;
 //   - a Soundscape recording, which the site's config excludes, so it must not
 //     show anywhere, the map included;
 //   - traits with ontology links and ranges, and annotations with and without
@@ -35,7 +36,7 @@ const taxa = [
   taxon('8', '7', 'Tettigonia', 'Genus', { ...orthoptera, family: 'Tettigoniidae', genus: 'Tettigonia' }),
   taxon('9', '8', 'Tettigonia viridissima', 'Species',
     { ...orthoptera, family: 'Tettigoniidae', genus: 'Tettigonia', species: 'Tettigonia viridissima' }),
-  taxon('10', '3', 'Gryllotalpidae', 'Family', { ...orthoptera, family: 'Gryllotalpidae' }),
+  taxon('10', '3', 'Gryllotalpidae', '', { ...orthoptera, family: 'Gryllotalpidae' }),
 ];
 
 // Every recording plays the same generated file (media.js), under its own address.

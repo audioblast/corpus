@@ -50,3 +50,17 @@ export function subgenusBrackets(name) {
   if (parts.length < 2 || !/^[A-Z]/.test(parts[1])) return name;
   return `${parts[0]} (${parts[1]})${parts.length > 2 ? ' ' + parts.slice(2).join(' ') : ''}`;
 }
+
+/**
+ * Whether a level of a taxon's hierarchy (its Order, say) is the taxon itself: the
+ * level names the taxon, at the taxon's rank where it has one. A taxon can share its
+ * name with one of another rank, so the name alone is enough only where there is no rank.
+ *   isOwnLevel('Crassiclitellata', 'Order', 'Order', 'Crassiclitellata') → true
+ *   isOwnLevel('Aus', 'Genus', 'Class', 'Aus')                           → false
+ *   isOwnLevel('Aus', '', 'Class', 'Aus')                                → true
+ */
+export function isOwnLevel(taxon, taxonRank, level, name) {
+  if (!name || name !== taxon) return false;
+  const rank = String(taxonRank ?? '').toLowerCase();
+  return !rank || rank === String(level).toLowerCase();
+}
