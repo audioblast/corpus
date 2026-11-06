@@ -42,6 +42,8 @@ import {
   renderPagination,
 } from './ui.js';
 
+import { isOwnLevel } from './format.js';
+
 import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
 
 // Must match the page size actually used for recording queries — the
@@ -666,25 +668,34 @@ function _buildTaxaTree(rows, traitRows = []) {
     if (!parent[name]) parent[name] = { name, rank, count: 0, traits: 0, children: Object.create(null) };
     parent[name].count  += count;
     parent[name].traits += traits;
-    return parent[name].children;
+    return parent[name];
   };
 
   for (const [taxon, count] of taxonCounts) {
-    const r       = taxonRow.get(taxon);
-    const kingdom = getField(r, 'Kingdom') || '(Unknown)';
-    const cls     = getField(r, 'Class');
-    const order   = getField(r, 'Order');
-    const family  = getField(r, 'Family');
-    const genus   = getField(r, 'Genus');
-    const rank    = getField(r, 'Rank') || getField(r, 'rank') || 'species';
-    const traits  = traitCounts.get(taxon) || 0;
+    const r      = taxonRow.get(taxon);
+    const rank   = getField(r, 'Rank') || getField(r, 'rank') || 'species';
+    const traits = traitCounts.get(taxon) || 0;
+    const levels = [
+      [getField(r, 'Kingdom') || '(Unknown)', 'Kingdom'],
+      [getField(r, 'Class'),  'Class'],
+      [getField(r, 'Order'),  'Order'],
+      [getField(r, 'Family'), 'Family'],
+      [getField(r, 'Genus'),  'Genus'],
+    ];
 
-    let lvl = ensure(root, kingdom, 'Kingdom', count, traits);
-    if (cls)    lvl = ensure(lvl, cls,    'Class',  count, traits);
-    if (order)  lvl = ensure(lvl, order,  'Order',  count, traits);
-    if (family) lvl = ensure(lvl, family, 'Family', count, traits);
-    if (genus)  lvl = ensure(lvl, genus,  'Genus',  count, traits);
-    if (!lvl[taxon]) lvl[taxon] = { name: taxon, rank, count, traits, children: {}, isLeaf: true };
+    // A taxon of one of these ranks is its own level: an order's Order is itself.
+    // Its recordings are counted there, and not again in a row of its own below it.
+    let lvl = root;
+    let own = null;
+    for (const [name, levelRank] of levels) {
+      if (!name) continue;
+      const node = ensure(lvl, name, levelRank, count, traits);
+      if (isOwnLevel(taxon, getField(r, 'Rank'), levelRank, name)) { own = node; break; }
+      lvl = node.children;
+    }
+    // The row is the taxon of recordings of its own, which _taxonPageLink links by name
+    if (own) own.recorded = true;
+    else if (!lvl[taxon]) lvl[taxon] = { name: taxon, rank, count, traits, children: {}, recorded: true };
   }
 
   return root;
@@ -698,7 +709,9 @@ function _renderTreeNode(node) {
   const traitHtml = config.hasFeature('traits') ? `<span class="tree-trait-count">${node.traits > 0 ? node.traits : ''}</span>` : '';
   const displayName = esc(subgenusBrackets(node.name));
 
-  if (node.isLeaf) {
+  // A row with nothing below it: a species, or a taxon of a higher rank whose
+  // recordings are all identified to it and no further.
+  if (!Object.keys(node.children).length) {
     const nameHtml = `<span class="tree-name${italic ? ' tree-name--italic' : ''}">${displayName}</span>${_taxonPageLink(node)}`;
     return `<div class="taxa-leaf" data-taxon="${esc(node.name)}">${rankHtml}${nameHtml}${countHtml}${traitHtml}</div>`;
   }
@@ -965,11 +978,12 @@ let _taxonPages = null;
 
 // Link to a tree row's pre-built page, or '' where there is none. An ancestor's
 // name can be shared with a taxon of another rank, so its rank has to match; a
-// leaf is the taxon of its own recordings, so its name is enough.
+// row with recordings of its own is the taxon they were joined to by name, so its
+// name is enough, with or without a rank.
 function _taxonPageLink(node) {
   const row = _taxonPages?.get(node.name);
   if (!row) return '';
-  if (!node.isLeaf && String(row.rank ?? '').toLowerCase() !== node.rank.toLowerCase()) return '';
+  if (!node.recorded && String(row.rank ?? '').toLowerCase() !== node.rank.toLowerCase()) return '';
   const href = staticPageHref('t', row.id);
   return href
     ? `<a class="tree-page-link" href="${esc(href)}" title="Page for this taxon" aria-label="Page for ${esc(node.name)}">↗</a>`
