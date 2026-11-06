@@ -57,6 +57,8 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 
 `package.json` holds the version, and `build-page.mjs` pins a site's page to it. A published version folder should never change afterwards, because Cloudflare caches a request for a file that doesn't exist yet as a 404. Publishing to `cdn.audioblast.org/corpus/<version>/` is manual for now.
 
+0.2.1 names a taxon identified above species, as soil's recordings are to an order, once: in the browse tree, in its taxonomy, and on its recordings' cards. A site on 0.2.0 moves to it by setting `corpusVersion` to `0.2.1` and running `build-page.mjs`.
+
 0.2.0 moves the page skeleton into corpus, so a site supplies content only, and sets a site's corpus version in one place. It also lets a site leave features out, shares the app's helpers with the tools, adds the browser checks to CI, licenses corpus under the GPL, and draws the map when its page was hidden while the map loaded. To move a site from 0.1.x:
 
 1. Move `site.js`, `about.html` and `css/theme.css` into `config/`.
