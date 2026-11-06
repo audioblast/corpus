@@ -3,9 +3,10 @@
 // and its habit of giving numbers as strings.
 //
 // What it is made to cover:
-//   - two families of Orthoptera, and a name with a subgenus ("Gryllus Gryllus
+//   - three families of Orthoptera, and a name with a subgenus ("Gryllus Gryllus
 //     campestris", shown as "Gryllus (Gryllus) campestris");
-//   - recordings identified to species and to genus;
+//   - recordings identified to species, to a genus with a species below it, and
+//     to a family with none below it, as soil's are identified to an order;
 //   - a Soundscape recording, which the site's config excludes, so it must not
 //     show anywhere, the map included;
 //   - traits with ontology links and ranges, and annotations with and without
@@ -34,6 +35,7 @@ const taxa = [
   taxon('8', '7', 'Tettigonia', 'Genus', { ...orthoptera, family: 'Tettigoniidae', genus: 'Tettigonia' }),
   taxon('9', '8', 'Tettigonia viridissima', 'Species',
     { ...orthoptera, family: 'Tettigoniidae', genus: 'Tettigonia', species: 'Tettigonia viridissima' }),
+  taxon('10', '3', 'Gryllotalpidae', 'Family', { ...orthoptera, family: 'Gryllotalpidae' }),
 ];
 
 // Every recording plays the same generated file (media.js), under its own address.
@@ -55,6 +57,7 @@ const recordings = [
   recording('8', 'Great green bush-cricket song', 'Tettigonia viridissima', 'Call'),
   recording('10', 'Cricket in a garden', 'Gryllus', 'Call', { author: 'B. Recordist' }),
   recording('11', 'Field cricket, second male', 'Gryllus Gryllus campestris', 'Call'),
+  recording('12', 'Mole cricket in a lawn', 'Gryllotalpidae', 'Call'),
   recording('9', 'Dawn chorus', 'Unknown species', 'Soundscape'),
 ];
 

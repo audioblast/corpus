@@ -28,7 +28,7 @@ In CI, `.github/workflows/test.yml` runs them in a job for each browser. A check
 
 `sites/` holds four sites' `config/` folders, as a real site has:
 
-- `collection`, like bio's, on the collection in `data/collection.js`. It has two families of Orthoptera, a name with a subgenus, recordings identified to species and to genus, traits, annotations and specimens. It also has a Soundscape, which the site leaves out, and a recording whose specimen has no coordinates.
+- `collection`, like bio's, on the collection in `data/collection.js`. It has three families of Orthoptera, a name with a subgenus, recordings identified to species, to a genus with a species below it and to a family with none, traits, annotations and specimens. It also has a Soundscape, which the site leaves out, and a recording whose specimen has no coordinates.
 - `empty`, like soil's, on a source with no records (`data/empty.js`).
 - `no-browse` and `no-traits`, on the same collection as `collection`, each with features left out (`features` in `js/config.js`): Browse taxa and the map, or Browse traits and Browse annotations. `features.spec.js` checks that a feature that is off has no place in the page, that its address shows home, and that the app makes none of its requests.
 

@@ -15,7 +15,7 @@ const skipWithoutWebAudio = browserName =>
 test('the home page shows the counts and the recent recordings, which open', async ({ page, site }) => {
   await page.goto(site.url());
   await expect(page).toHaveTitle('Test collection — Browser checks');
-  for (const [stat, count] of [['recordings', '5'], ['taxa', '9'], ['traits', '3'], ['annotations', '3']]) {
+  for (const [stat, count] of [['recordings', '6'], ['taxa', '10'], ['traits', '3'], ['annotations', '3']]) {
     await expect(page.locator(`#stat-${stat} strong`)).toHaveText(count);
   }
   await expect(page.locator('#featured-list .card-title')).toHaveText([
@@ -55,7 +55,7 @@ test('search lists what matches, leaves out excluded types, and suggests taxa', 
   await expect(page).toHaveURL(site.url('t/9/'));
 });
 
-test('browse taxa shows the tree with its counts, and a species opens its taxon', async ({ page, site }) => {
+test('browse taxa shows the tree with its counts, each taxon once, and a species opens its taxon', async ({ page, site }) => {
   await page.goto(site.url());
   await nav(page, 'Browse taxa').click();
   await expect(page).toHaveURL(site.url('?page=browse'));
@@ -64,12 +64,23 @@ test('browse taxa shows the tree with its counts, and a species opens its taxon'
 
   // The kingdom starts open. Open the branches down to the field cricket.
   for (const name of ['Insecta', 'Orthoptera', 'Gryllidae', 'Gryllus']) await branch(name).locator('.tree-rank').click();
-  await expect(branch('Orthoptera').locator('.tree-count')).toHaveText('4');
+  await expect(branch('Orthoptera').locator('.tree-count')).toHaveText('5');
   await expect(branch('Orthoptera').locator('.tree-trait-count')).toHaveText('3');
   const species = tree.locator('.taxa-leaf[data-taxon="Gryllus Gryllus campestris"]');
   await expect(species.locator('.tree-name')).toHaveText(CRICKET);
   await expect(species.locator('.tree-count')).toHaveText('2');
   await expect(species.locator('.tree-page-link')).toHaveAttribute('href', 't/6/');
+
+  // A taxon above species is counted at its own rank, not again in a row below it.
+  // The genus's own recording is in its count with its species', and the family
+  // with nothing recorded below it is a row with nothing to open.
+  await expect(branch('Gryllus').locator('.tree-count')).toHaveText('3');
+  await expect(tree.locator('[data-taxon="Gryllus"]')).toHaveCount(1);
+  const family = tree.locator('.taxa-leaf[data-taxon="Gryllotalpidae"]');
+  await expect(family.locator('.tree-rank')).toHaveText('Family');
+  await expect(family.locator('.tree-count')).toHaveText('1');
+  await expect(family.locator('.tree-page-link')).toHaveAttribute('href', 't/10/');
+  await expect(tree.locator('[data-taxon="Gryllotalpidae"]')).toHaveCount(1);
 
   await species.click();
   await expect(page.locator('#taxon-content h1')).toHaveText(CRICKET);
@@ -181,6 +192,24 @@ test('a genus page lists the recordings of the genus and of its species', async 
   await expect(taxon.locator('#taxon-recordings .card-title')).toHaveText([
     RECORDING_7, 'Cricket in a garden', 'Field cricket, second male',
   ]);
+});
+
+test('a taxon above species is named once, in its taxonomy and on its recordings', async ({ page, site }) => {
+  // A family with nothing recorded below it: its taxonomy ends at its own rank, and
+  // its recording's card has its tag, with none for the family as well.
+  await page.goto(site.url('t/10/'));
+  const taxon = page.locator('#taxon-content');
+  await expect(taxon.locator('h1')).toHaveText('Gryllotalpidae');
+  await expect(taxon.locator('#taxon-links .taxon-rank')).toHaveText(['Kingdom', 'Class', 'Order', 'Family']);
+  await expect(taxon.locator('#taxon-links .taxon-name')).toHaveText(['Animalia', 'Insecta', 'Orthoptera', 'Gryllotalpidae']);
+  await expect(taxon.locator('#taxon-recordings .card-tags .tag')).toHaveText(['Call', 'Orthoptera', 'Gryllotalpidae']);
+
+  // A recording of a genus: its taxonomy ends at the genus
+  await page.goto(site.url('r/10/'));
+  const detail = page.locator('#detail-content');
+  await expect(detail.locator('h1')).toHaveText('Cricket in a garden');
+  await expect(detail.locator('#taxon-links .taxon-rank')).toHaveText(['Kingdom', 'Class', 'Order', 'Family', 'Genus']);
+  await expect(detail.locator('#taxon-links .taxon-name')).toHaveText(['Animalia', 'Insecta', 'Orthoptera', 'Gryllidae', 'Gryllus']);
 });
 
 test('the about page loads the site\'s own about.html', async ({ page, site }) => {

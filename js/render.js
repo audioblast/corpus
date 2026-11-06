@@ -1654,9 +1654,10 @@ function recordingCard(r) {
   const author  = r.author        || '';
   const type    = r.recording_type || '';
   // Older joined rows used capitalised rank fields; /data/taxa/
-  // returns lowercase — accept either via getField().
-  const order   = getField(r, 'Order');
-  const family  = getField(r, 'Family');
+  // returns lowercase — accept either via getField(). A taxon that is itself an
+  // order or a family has its own tag, below, and not one for its rank as well.
+  const order   = getField(r, 'Order') !== taxon ? getField(r, 'Order') : '';
+  const family  = getField(r, 'Family') !== taxon ? getField(r, 'Family') : '';
   const idStr   = esc(String(id));
   const pageHref = staticPageHref('r', id, type);
 
@@ -1843,8 +1844,17 @@ function buildTaxonHierarchy(r, onTaxonSearch) {
     ['Order',   getField(r, 'Order')],
     ['Family',  getField(r, 'Family')],
     ['Genus',   getField(r, 'Genus')],
-    ['Species', getField(r, 'Species') || getField(r, 'taxon')],
+    ['Species', getField(r, 'Species')],
   ].filter(([, v]) => v);
+
+  // A row with no species gives its taxon a line of its own, under the taxon's rank,
+  // or as a species where it has none. A taxon above species, as an order, already
+  // has its rank's line, and is not given another.
+  const taxon = getField(r, 'taxon');
+  if (!getField(r, 'Species') && taxon && !ranks.some(([, v]) => v === taxon)) {
+    const rank = String(getField(r, 'Rank'));
+    ranks.push([rank ? rank[0].toUpperCase() + rank.slice(1).toLowerCase() : 'Species', taxon]);
+  }
 
   if (!ranks.length) return '';
 

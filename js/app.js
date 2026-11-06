@@ -670,21 +670,27 @@ function _buildTaxaTree(rows, traitRows = []) {
   };
 
   for (const [taxon, count] of taxonCounts) {
-    const r       = taxonRow.get(taxon);
-    const kingdom = getField(r, 'Kingdom') || '(Unknown)';
-    const cls     = getField(r, 'Class');
-    const order   = getField(r, 'Order');
-    const family  = getField(r, 'Family');
-    const genus   = getField(r, 'Genus');
-    const rank    = getField(r, 'Rank') || getField(r, 'rank') || 'species';
-    const traits  = traitCounts.get(taxon) || 0;
+    const r      = taxonRow.get(taxon);
+    const rank   = getField(r, 'Rank') || getField(r, 'rank') || 'species';
+    const traits = traitCounts.get(taxon) || 0;
+    const levels = [
+      [getField(r, 'Kingdom') || '(Unknown)', 'Kingdom'],
+      [getField(r, 'Class'),  'Class'],
+      [getField(r, 'Order'),  'Order'],
+      [getField(r, 'Family'), 'Family'],
+      [getField(r, 'Genus'),  'Genus'],
+    ];
 
-    let lvl = ensure(root, kingdom, 'Kingdom', count, traits);
-    if (cls)    lvl = ensure(lvl, cls,    'Class',  count, traits);
-    if (order)  lvl = ensure(lvl, order,  'Order',  count, traits);
-    if (family) lvl = ensure(lvl, family, 'Family', count, traits);
-    if (genus)  lvl = ensure(lvl, genus,  'Genus',  count, traits);
-    if (!lvl[taxon]) lvl[taxon] = { name: taxon, rank, count, traits, children: {}, isLeaf: true };
+    // A taxon of one of these ranks is its own level: an order's Order is itself.
+    // Its recordings are counted there, and not again in a row of its own below it.
+    let lvl = root;
+    let atOwnLevel = false;
+    for (const [name, levelRank] of levels) {
+      if (!name) continue;
+      lvl = ensure(lvl, name, levelRank, count, traits);
+      if (name === taxon) { atOwnLevel = true; break; }
+    }
+    if (!atOwnLevel && !lvl[taxon]) lvl[taxon] = { name: taxon, rank, count, traits, children: {}, isLeaf: true };
   }
 
   return root;
@@ -698,7 +704,9 @@ function _renderTreeNode(node) {
   const traitHtml = config.hasFeature('traits') ? `<span class="tree-trait-count">${node.traits > 0 ? node.traits : ''}</span>` : '';
   const displayName = esc(subgenusBrackets(node.name));
 
-  if (node.isLeaf) {
+  // A row with nothing below it: a species, or a taxon of a higher rank whose
+  // recordings are all identified to it and no further.
+  if (!Object.keys(node.children).length) {
     const nameHtml = `<span class="tree-name${italic ? ' tree-name--italic' : ''}">${displayName}</span>${_taxonPageLink(node)}`;
     return `<div class="taxa-leaf" data-taxon="${esc(node.name)}">${rankHtml}${nameHtml}${countHtml}${traitHtml}</div>`;
   }
