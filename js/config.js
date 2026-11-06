@@ -143,6 +143,21 @@ const config = {
    */
   githubRepo: null,
 
+  // ── Old addresses ─────────────────────────────────────────────────
+
+  /**
+   * A JSON file of the addresses the site had before it ran on corpus, each with the
+   * page it is now, both from the site's root:
+   *   { "node/10756": "r/10756/", "taxonomy/term/247": "t/247/" }
+   * '/' is the home page, for an old page with nothing in its place, and a page
+   * that moved to another site is given by its full http(s) address.
+   * tools/build-static.mjs writes a page at each old address that sends the reader
+   * on to the new one, so that links to the old site keep working. Only the tool
+   * reads the file, so the app's pages never load it, however long it is. The
+   * path is from the site's root, as 'config/redirects.json'. Null for none.
+   */
+  redirects: null,
+
   // ── Recording types ───────────────────────────────────────────────
 
   /**

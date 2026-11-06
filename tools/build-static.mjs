@@ -9,6 +9,9 @@
  *                         recordings and taxonomy written into its view
  *   sitemap.xml
  *   robots.txt            (only honoured by crawlers at a host's root)
+ *   <old address>/index.html
+ *                         for each of the site's old addresses (config.redirects),
+ *                         a page that sends the reader on to the page it is now
  * Those pages carry their content as plain HTML plus JSON-LD, so they work
  * without JavaScript. With JavaScript the app takes the same page over and shows
  * the player or the taxon view (js/app.js).
@@ -28,7 +31,7 @@
  * they belong to (plus those taxa's ancestors), so links between pages resolve.
  */
 
-import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -80,6 +83,13 @@ const nameHtml = (name, rank) => {
 };
 
 const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim();
+
+// An address on another site, or '' for one on this site: that is the page itself,
+// or one of the site's old addresses, which sends the reader to it.
+const SITE_HOST = new URL(SITE).host;
+const offSite = url => {
+  try { return new URL(url).host === SITE_HOST ? '' : url; } catch { return ''; }
+};
 
 async function getJson(url, tries = 3) {
   for (let i = 1; ; i++) {
@@ -260,7 +270,7 @@ for (const r of recs) {
   const dur   = fmtDuration(r.duration);
   const taxonName = clean(r.taxon);
   const canonical = `${SITE}/r/${id}/`;
-  const original  = httpUrl(r.info_url || config.recordingPageUrl(id));
+  const original  = offSite(httpUrl(r.info_url || config.recordingPageUrl(id)));
 
   const rows = [
     ['Taxon',         taxonName && t
@@ -395,4 +405,99 @@ Allow: /
 Sitemap: ${SITE}/sitemap.xml
 `);
 
-console.log(`Wrote ${recs.length} recording pages, ${taxa.length} taxon pages, sitemap (${urls.length} URLs) to ${OUT}`);
+// ── Old addresses ─────────────────────────────────────────────────
+// A page at each of the site's old addresses (config.redirects) that sends the
+// reader on to the page it is now. A static host can't redirect, so each is a page
+// of its own, which refreshes at once to the new page and names it as canonical:
+// search engines take that as a permanent move. The host sends a request for the
+// old address without its last slash on to the address with it. These come last,
+// so that an old address can't take the place of a file the build has written.
+const RESERVED = new Set(['r', 't', 'config']);
+const HOME = new URL(BASE, SITE + '/');
+let movedCount = 0;
+
+// The old address as a path from the site's root, or an error if it isn't one, or
+// is where the site's own pages or files are.
+async function oldPath(from) {
+  const p = String(from).replace(/^\/+|\/+$/g, '');
+  const parts = p.split('/');
+  if (!p || parts.some(s => !s || s === '.' || s === '..' || /[\\?#%\u0000-\u001f]/.test(s))) {
+    throw new Error(`The old address "${from}" in ${config.redirects} is not a path on the site`);
+  }
+  const file = await stat(path.join(OUT, p)).catch(() => null);
+  if (RESERVED.has(parts[0]) || file?.isFile()) {
+    throw new Error(`The old address "${from}" in ${config.redirects} is where the site's own pages are`);
+  }
+  return p;
+}
+
+// The page an old address goes to: a path from the site's root ('/' for its home
+// page), or another site's full http(s) address.
+function newPage(from, to) {
+  const s = typeof to === 'string' ? to.trim() : '';
+  let url = null;
+  try {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(s)) url = httpUrl(s) ? new URL(s) : null;
+    else if (s && !s.startsWith('//')) url = new URL(s.replace(/^\/+/, ''), HOME);
+  } catch { url = null; }
+  if (!url) throw new Error(`The old address "${from}" in ${config.redirects} goes to "${to}", which is not a page on the site or an http(s) address`);
+  return url;
+}
+
+function movedPage(to) {
+  const href = to.origin === HOME.origin ? to.pathname + to.search + to.hash : to.href;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Moved — ${esc(SITE_NAME)}</title>
+  <link rel="canonical" href="${esc(to.href)}">
+  <meta http-equiv="refresh" content="0; url=${esc(href)}">
+</head>
+<body>
+  <p>This page is now at <a href="${esc(href)}">${esc(to.href)}</a>.</p>
+</body>
+</html>
+`;
+}
+
+if (config.redirects) {
+  let moves;
+  try {
+    moves = JSON.parse(await readFile(path.resolve(config.redirects), 'utf8'));
+  } catch (err) {
+    throw new Error(`Cannot read the site's old addresses from ${config.redirects}: ${err.message}`);
+  }
+  if (!moves || typeof moves !== 'object' || Array.isArray(moves)) {
+    throw new Error(`${config.redirects} must be an object of old addresses, each with the page it is now`);
+  }
+
+  // A recording's or taxon's page that this build didn't write isn't there to go
+  // to: one of a recording type the site leaves out, or left out by a limit.
+  const pathOf = rel => new URL(rel, HOME).pathname;
+  const written = new Set([...recs.map(r => pathOf(`r/${r.id}/`)), ...taxa.map(t => pathOf(`t/${t.id}/`))]);
+  const isPage = new RegExp(`^${escapeRegExp(HOME.pathname)}[rt]/[^/]+/$`);
+  const gone = [];
+  async function move([from, to]) {
+    const old = await oldPath(from);
+    const page = newPage(from, to);
+    if (page.origin === HOME.origin && isPage.test(page.pathname) && !written.has(page.pathname)) {
+      gone.push(old);
+      return;
+    }
+    await write(`${old}/index.html`, movedPage(page));
+    movedCount++;
+  }
+  // A site can have a great many old addresses, so their pages are written a batch
+  // at a time rather than one by one.
+  const all = Object.entries(moves);
+  for (let i = 0; i < all.length; i += 100) await Promise.all(all.slice(i, i + 100).map(move));
+  if (gone.length) {
+    gone.sort();
+    console.warn(`  ${gone.length} old address${gone.length === 1 ? ' goes' : 'es go'} to a page this build didn't write, and ${gone.length === 1 ? 'was' : 'were'} left out: `
+      + gone.slice(0, 5).join(', ') + (gone.length > 5 ? ', …' : ''));
+  }
+}
+
+console.log(`Wrote ${recs.length} recording pages, ${taxa.length} taxon pages, sitemap (${urls.length} URLs)`
+  + (config.redirects ? `, ${movedCount} old addresses` : '') + ` to ${OUT}`);

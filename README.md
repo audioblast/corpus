@@ -11,6 +11,7 @@ A `config/` folder, with:
 - `site.js`: its settings and copy, with the shape of `js/config.js`. It sets `source` and whatever differs from the defaults: names, logo, hero, filter examples, links, recording types, map tiles, and the features it leaves out (see Features).
 - `about.html`: the About page's content, an HTML fragment that the app loads into the page.
 - `theme.css`, if the site has its own colours (see Styles).
+- `redirects.json`, if the site had other addresses before it ran on corpus (see Old addresses).
 
 Add a favicon, and a `CNAME` if the site has its own domain.
 
@@ -53,6 +54,27 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 
 `--site` is required. `--config` (default `config/site.js`) and `--page` (default `index.html`) name the site's files, and `--base` is the path the site is served from. Node 22, as the Pages workflow uses.
 
+## Old addresses
+
+A site that had other addresses before it ran on corpus, which papers, datasets and other sites still link to, lists them in a JSON file, each with the page it is now, both from the site's root:
+
+```json
+{
+  "node/10756": "r/10756/",
+  "classification/gryllotalpa-vineae": "t/247/",
+  "node/11164": "/?page=map",
+  "content/ml-130104": "https://macaulaylibrary.org/asset/130104"
+}
+```
+
+`redirects` in `config/site.js` names the file, as `'config/redirects.json'`. `/` is the home page, for an old page with nothing in its place, and a page that moved to another site is given by its full http(s) address. Only `build-static.mjs` reads the file, so the app's pages never load it, however long it is.
+
+A static host can't redirect, so `build-static.mjs` writes a page at each old address, `<old address>/index.html`, which refreshes at once to the new page and names it as canonical: search engines take that as a permanent move, and a reader whose browser doesn't refresh has a link. The host sends a request for the old address without its last slash on to the address with it. Those pages aren't in the sitemap.
+
+- An old address that would take the place of the site's own pages or files (`r/…`, `t/…`, `config/…`, or a file the build has written, such as `sitemap.xml`), or that isn't a path a file can be written at (`..`, `?`, `#`, `%`, `\`), stops the build, and so does a new page that is neither on the site nor an http(s) address.
+- An old address that goes to a recording's or a taxon's page this build doesn't write, such as one of a recording type the site leaves out, is left out, with a warning that counts them.
+- On the recording pages, the original page (the recording's `info_url`, or `recordingPageUrl`) is linked only when it is on another site. An address on the site itself is the page, or one of its old addresses, which sends the reader back to it.
+
 ## Versions
 
 `package.json` holds the version, and `build-page.mjs` pins a site's page to it. A published version folder should never change afterwards, because Cloudflare caches a request for a file that doesn't exist yet as a 404. Publishing to `cdn.audioblast.org/corpus/<version>/` is manual for now.
@@ -71,7 +93,7 @@ node corpus/tools/build-static.mjs --site https://example.org --out _site
 `npm test` runs the tests in `tests/`, with no network access:
 
 - the helpers that the app and the tools share (`js/format.js`): escaping, the two URL checks and taxon names;
-- the static-page generator, against a fake audioBlast API: a page for each recording and taxon, requests scoped to the source, a source with no records (only the sitemap and robots.txt, with a warning), and failures that must be clear;
+- the static-page generator, against a fake audioBlast API: a page for each recording and taxon, requests scoped to the source, a page at each old address that sends the reader on (under a base path too), old addresses that stop the build or are left out, the original page linked only when it is on another site, a source with no records (only the sitemap and robots.txt, with a warning), and failures that must be clear;
 - the page builder: a site's page and `main.js` from its `config/`, with escaping, the defaults a site leaves out and its own basemap host; a theme link only when there is a theme; the features a site leaves out, with no gaps where they were; `--core` and `--check`; and a page the static-page generator builds on, with and without Browse taxa;
 - the default config: the empty source, the recording-type rules, and the features;
 - `prepaint.js`: the page it shows first for each kind of address, and home for a feature the site leaves out.
