@@ -29,6 +29,17 @@ test('the home page shows the counts and the recent recordings, which open', asy
   await expect(page).toHaveURL(site.url('r/7/'));
 });
 
+test('a recording opened from the home page links from the site root, as its own page does', async ({ page, site }) => {
+  await page.goto(site.url());
+  await page.locator('#featured-list .recording-card').first().click();
+  await expect(page).toHaveURL(site.url('r/7/'));
+
+  // The address is the recording's page now, but the link is not under it
+  await page.getByRole('link', { name: 'Page for this taxon' }).click();
+  await expect(page).toHaveURL(site.url('t/6/'));
+  await expect(page.locator('#taxon-content h1')).toHaveText(CRICKET);
+});
+
 test('search lists what matches, leaves out excluded types, and suggests taxa', async ({ page, site }) => {
   await page.goto(site.url());
   const search = page.locator('#main-search');

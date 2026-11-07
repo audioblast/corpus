@@ -31,8 +31,8 @@ export { safeUrl, subgenusBrackets, ITALIC_RANKS };
 export const UNKNOWN_TAXON = 'Unknown species';
 
 // Relative URL of the pre-built page for a recording or taxon
-// (tools/build-static.mjs). The app is served from the site root, so it is
-// relative to that. '' where the build writes no page: an unusable id, or one
+// (tools/build-static.mjs), from the site root, which is every page's base (see
+// SITE_ROOT in app.js). '' where the build writes no page: an unusable id, or one
 // of the recording types it leaves out.
 export function staticPageHref(kind, id, recordingType = '') {
   if (!/^[A-Za-z0-9_-]+$/.test(String(id ?? ''))) return '';

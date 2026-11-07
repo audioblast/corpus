@@ -138,9 +138,18 @@ const els = {
 
 // ── URL helpers ───────────────────────────────────────────────────
 
-// The site's root, as a path: the app's own addresses are relative to it. It is the
-// page's base, which a shell and the static pages both set to the site's root.
+// The site's root, as a path: the app's own addresses are relative to it. A static
+// page's <base> is the site's root, and a shell is served from there.
 const SITE_ROOT = new URL('./', document.baseURI).pathname;
+
+// A shell has no <base>, so it is given the static pages' one. Once the app moves the
+// address to a recording's or a taxon's page (_moveToPage), a relative address, such
+// as the t/<id>/ of "Page for this taxon", would otherwise resolve under that page.
+if (!document.querySelector('base[href]')) {
+  const base = document.createElement('base');
+  base.href = SITE_ROOT;
+  document.head.prepend(base);
+}
 
 // The id of the page the address is, for one kind of page ('r' or 't') under
 // the site root, or null.
