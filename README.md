@@ -82,6 +82,8 @@ A static host can't redirect, so `build-static.mjs` writes a page at each old ad
 
 `package.json` holds the version, and `build-page.mjs` pins a site's page to it. A published version folder should never change afterwards, because Cloudflare caches a request for a file that doesn't exist yet as a 404. Publishing to `cdn.audioblast.org/corpus/<version>/` is manual for now.
 
+0.4.1 adds Browse specimens: a page in the navigation that lists the specimens a page at a time, filtered by name, country, basis of record and collector (see Features). It comes with specimens, and a site with none sets `features: { specimens: false }`, which leaves it out too. A site moves to it by setting `corpusVersion` to `0.4.1` and running `build-page.mjs`.
+
 0.4.0 gives each specimen a page, at `s/<id>/`, with its details, the recordings it is of and the taxon it is identified as (see Features). A recording's page lists its specimens, a taxon's page lists the specimens of the taxon and of the taxa under it (a Specimens tab in the app), and a map popup links each specimen to its page. An old address of a specimen can go to its page. A site moves to it by setting `corpusVersion` to `0.4.0` and running `build-page.mjs`; a site with no specimens sets `features: { specimens: false }`.
 
 0.3.1 fixes the links, such as "Page for this taxon", on a recording or taxon opened from the home page: they went to an address under that page, which doesn't exist. A site on 0.3.0 moves to it by setting `corpusVersion` to `0.3.1` and running `build-page.mjs`.
