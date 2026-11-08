@@ -17,7 +17,7 @@
  * no-op for this file.
  */
 
-import { esc, safeUrl, subgenusBrackets, ITALIC_RANKS, isOwnLevel, nameHtml, specimenDetails, SPECIMEN_LIST_CAP } from './format.js';
+import { esc, safeUrl, httpUrl, subgenusBrackets, ITALIC_RANKS, isOwnLevel, nameHtml, specimenDetails, citationText, SPECIMEN_LIST_CAP } from './format.js';
 import { showEmpty, ICON_PLAY, ICON_PAUSE } from './ui.js';
 import { togglePlay } from './player.js';
 import config from './config.js';
@@ -1561,6 +1561,7 @@ export function renderDetail(recording, container, onTaxonSearch) {
         <h3 class="detail-section-heading">Metadata</h3>
         <table class="meta-table">${metaRows}</table>
         <div id="detail-specimens-block"></div>
+        <div id="detail-publications-block"></div>
       </div>
 
       <div class="detail-side">
@@ -1757,6 +1758,142 @@ export function renderTaxonSpecimens(container, specimens) {
     + `<table class="meta-table">${shown.map(specimenRowHtml).join('')}</table>`
     + (specimens.length > shown.length
       ? `<p class="detail-meta">The first ${shown.length} of ${specimens.length} specimens are listed here.</p>` : '');
+}
+
+// ── Publications and descriptions ─────────────────────────────────
+// A publication's page, a recording's list of the publications that cite it, and a taxon's
+// Literature and Descriptions tabs. The markup is that tools/build-static.mjs writes.
+
+// The address of a publication's own page, from the site root.
+export function publicationPageHref(id) {
+  return /^[A-Za-z0-9_-]+$/.test(String(id ?? '')) ? `p/${id}/` : '';
+}
+
+// A publication as a row of a list: its citation, linked to its page.
+function publicationRowHtml(r) {
+  return `<tr><td><a href="${esc(publicationPageHref(r.id))}">${esc(citationText(r))}</a></td></tr>`;
+}
+
+// A description's topic as a heading: its first letter capitalised.
+function topicLabel(topic) {
+  const t = String(topic ?? '').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Description';
+}
+
+/**
+ * The publications that cite a recording, under its metadata in the detail view. Nothing
+ * for none.
+ * @param {HTMLElement} container  the container passed to renderDetail
+ * @param {object[]|null} refs  fetchRecordingReferences' rows, or null on failure
+ */
+export function renderDetailPublications(container, refs) {
+  const block = container.querySelector('#detail-publications-block');
+  if (!block) return;
+  block.innerHTML = refs?.length
+    ? `<h3 class="detail-section-heading">Publications</h3>`
+      + `<table class="meta-table">${refs.map(publicationRowHtml).join('')}</table>`
+    : '';
+}
+
+/**
+ * A publication's page in the app: its citation and abstract, and the recordings that cite
+ * it, the taxa it is about, and the descriptions that cite it.
+ * @param {{reference: object, recordings: object[], taxa: object[], descriptions: object[]}} view
+ *   fetchPublication's result, for a publication that exists
+ * @param {HTMLElement} container
+ * @param {Function} onTaxon  called with a taxon's name when its name is clicked
+ */
+export function renderPublication({ reference: r, recordings, taxa, descriptions }, container, onTaxon) {
+  const title   = String(r.title ?? '').trim() || 'Untitled publication';
+  const doi     = String(r.doi ?? '').trim();
+  const url     = httpUrl(r.url);
+  const files   = String(r.attachments ?? '').split(';').map(s => httpUrl(s)).filter(Boolean);
+  const abstract = String(r.abstract ?? '').trim();
+  const taxonLink = t => `<span class="taxon-name" data-taxon="${esc(t.taxon)}">${nameHtml(t.taxon, t.rank)}</span>`;
+  const actions = [
+    doi ? `<a href="https://doi.org/${esc(encodeURI(doi))}" target="_blank" rel="noopener" class="detail-action-link">DOI ${esc(doi)}</a>` : '',
+    url ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="detail-action-link">Original page</a>` : '',
+    ...files.map((f, i) => `<a href="${esc(f)}" target="_blank" rel="noopener" class="detail-action-link">File${files.length > 1 ? ` ${i + 1}` : ''}</a>`),
+  ].filter(Boolean).join('\n      ');
+
+  container.innerHTML = `
+    <h1 class="detail-title">${esc(title)}</h1>
+    <div class="detail-meta">#${esc(r.id)} · ${esc(r.source || config.source)}${r.type_name ? ` · ${esc(r.type_name)}` : ''}</div>
+    ${actions ? `<div class="detail-actions">
+      ${actions}
+    </div>` : ''}
+
+    <div class="detail-grid">
+      <div class="detail-main">
+        <h3 class="detail-section-heading">Citation</h3>
+        <p>${esc(citationText(r))}</p>
+        ${abstract ? `<h3 class="detail-section-heading">Abstract</h3><p>${esc(abstract)}</p>` : ''}
+        ${recordings.length ? `<h3 class="detail-section-heading">Recordings</h3>`
+          + `<table class="meta-table">${recordings.map(recordingRowHtml).join('')}</table>` : ''}
+        ${taxa.length ? `<h3 class="detail-section-heading">Taxa</h3>`
+          + `<table class="meta-table">${taxa.map(t => `<tr><td>${taxonLink(t)}</td></tr>`).join('')}</table>` : ''}
+        ${descriptions.length ? `<h3 class="detail-section-heading">Descriptions</h3>`
+          + `<table class="meta-table">${descriptions.map(d => `<tr><td>${d.taxon ? taxonLink(d.taxon) : ''}</td>`
+            + `<td>${esc(topicLabel(d.topic))}</td></tr>`).join('')}</table>` : ''}
+      </div>
+    </div>`;
+
+  container.querySelectorAll('.taxon-name[data-taxon]').forEach(el => {
+    el.addEventListener('click', () => onTaxon?.(el.dataset.taxon));
+  });
+}
+
+/**
+ * A taxon's Literature tab: the publications about it, and about the taxa under it, the
+ * first SPECIMEN_LIST_CAP of them, most recent first.
+ * @param {HTMLElement} container  the taxon's view
+ * @param {object[]|null} refs  fetchTaxonLiterature's rows, or null on failure
+ */
+export function renderTaxonLiterature(container, refs) {
+  const block = container.querySelector('#literature-content');
+  if (!block) return;
+  if (!refs) {
+    block.innerHTML = '<span style="font-size:12px;color:var(--text3)">Not available</span>';
+    return;
+  }
+  if (!refs.length) {
+    block.innerHTML = '<p class="detail-meta">No publications about this taxon are in the collection.</p>';
+    return;
+  }
+  const shown = refs.slice(0, SPECIMEN_LIST_CAP);
+  block.innerHTML = `<div class="results-header"><div class="results-count">`
+    + `<strong>${refs.length}</strong> publication${refs.length === 1 ? '' : 's'}</div></div>`
+    + `<table class="meta-table">${shown.map(publicationRowHtml).join('')}</table>`
+    + (refs.length > shown.length
+      ? `<p class="detail-meta">The first ${shown.length} of ${refs.length} publications are listed here.</p>` : '');
+}
+
+/**
+ * A taxon's Descriptions tab: what the publications say about the taxon, each with the
+ * publications it cites.
+ * @param {HTMLElement} container  the taxon's view
+ * @param {object[]|null} descs  fetchTaxonDescriptions' rows, or null on failure
+ */
+export function renderTaxonDescriptions(container, descs) {
+  const block = container.querySelector('#descriptions-content');
+  if (!block) return;
+  if (!descs) {
+    block.innerHTML = '<span style="font-size:12px;color:var(--text3)">Not available</span>';
+    return;
+  }
+  if (!descs.length) {
+    block.innerHTML = '<p class="detail-meta">No descriptions of this taxon are in the collection.</p>';
+    return;
+  }
+  block.innerHTML = descs.map(d => {
+    const sources = (d.references ?? []).map(r =>
+      `<a href="${esc(publicationPageHref(r.id))}">${esc(citationText(r))}</a>`).join('; ');
+    return `<div class="description-block">
+      <h3 class="detail-section-heading">${esc(topicLabel(d.topic))}</h3>
+      <p>${esc(d.value ?? '')}</p>
+      ${sources ? `<p class="detail-meta">Source: ${sources}</p>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // ── Internal ──────────────────────────────────────────────────────

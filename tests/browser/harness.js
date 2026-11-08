@@ -76,6 +76,7 @@ async function assembleSite(name) {
   const origin = `https://${name}.test`;
   const api = await serveApi({
     taxa: data.taxa, recordings: data.recordings, specimens: data.specimens, links: data.links,
+    references: data.references, descriptions: data.descriptions,
   });
   try {
     await runTool('build-static.mjs', [
@@ -168,7 +169,11 @@ export const test = base.extend({
       if (message.type() === 'error') problems.push(`console error: ${message.text()}${where}`);
       if (message.type() === 'warning') warnings.push(message.text());
     });
-    page.on('pageerror', error => problems.push(`uncaught exception: ${error.message}`));
+    // WebKit reports a request that a navigation cancels as failing its access control checks. Every
+    // answer carries the CORS header (CORS, above), so that message is the cancellation alone, not a problem.
+    page.on('pageerror', error => {
+      if (!/due to access control checks[.]?$/.test(error.message)) problems.push(`uncaught exception: ${error.message}`);
+    });
 
     await page.context().route('**/*', async route => {
       const request = route.request();

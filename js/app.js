@@ -35,6 +35,10 @@ import {
   fetchRecordingSpecimens,
   fetchSpecimensForTaxon,
   fetchSpecimenList,
+  fetchRecordingReferences,
+  fetchPublication,
+  fetchTaxonDescriptions,
+  fetchTaxonLiterature,
 } from './api.js';
 
 import {
@@ -48,7 +52,7 @@ import {
 
 import { isOwnLevel } from './format.js';
 
-import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, renderDetailSpecimens, renderSpecimen, renderTaxonSpecimens, specimenPageHref, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
+import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, renderDetailSpecimens, renderSpecimen, renderTaxonSpecimens, specimenPageHref, renderDetailPublications, renderPublication, renderTaxonLiterature, renderTaxonDescriptions, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
 
 // Must match the page size actually used for recording queries — the
 // audioBlast default of 250, which api.js also pages its cached rows at.
@@ -64,7 +68,7 @@ const BULK_CONCURRENCY = 6;
 // Nav tokens — each navigation increments the counter for the section it
 // targets. Async slot-in handlers capture the token at start and drop their
 // results if the counter has moved on (= user navigated again).
-const navTokens = { detail: 0, taxon: 0, search: 0, specimen: 0 };
+const navTokens = { detail: 0, taxon: 0, search: 0, specimen: 0, publication: 0 };
 
 async function _runWithLimit(tasks, limit) {
   const results = new Array(tasks.length);
@@ -141,6 +145,7 @@ const els = {
   specimensList:            $('specimens-list'),
   specimensCount:           $('specimens-count'),
   specimensPagination:      $('specimens-pagination'),
+  publicationContent:       $('publication-content'),
   mapCanvas:                $('map-canvas'),
   mapCount:                 $('map-count'),
   mapNote:                  $('map-note'),
@@ -174,6 +179,7 @@ function _pageIdFromPath(kind) {
 const recordingIdFromPath = () => _pageIdFromPath('r');
 const taxonIdFromPath = () => _pageIdFromPath('t');
 const specimenIdFromPath = () => _pageIdFromPath('s');
+const publicationIdFromPath = () => _pageIdFromPath('p');
 
 // The taxon that a taxon's own page is for, found by the id in its address. The
 // build writes the name on the page too, for when the taxa cannot be loaded.
@@ -205,9 +211,10 @@ function applyPage(name) {
     navTokens.detail++;
   }
   // The views for a recording, a taxon and a specimen set their own titles.
-  if (name !== 'detail' && name !== 'taxon' && name !== 'specimen') document.title = siteTitle();
+  if (name !== 'detail' && name !== 'taxon' && name !== 'specimen' && name !== 'publication') document.title = siteTitle();
   if (name !== 'taxon') navTokens.taxon++;
   if (name !== 'specimen') navTokens.specimen++;
+  if (name !== 'publication') navTokens.publication++;
   if (name !== 'home')  navTokens.search++;
   els.pages.forEach(p => p.classList.toggle('active', p.id === `page-${name}`));
   els.navBtns.forEach(b => {
@@ -399,6 +406,13 @@ async function _showDetail(id, fallback = null, seekTime = null) {
     })
     .catch(() => {});
 
+  // The publications that cite the recording, under its metadata, when the site has them.
+  if (config.hasFeature('publications')) {
+    fetchRecordingReferences(id)
+      .then(refs => { if (isCurrent()) renderDetailPublications(els.detailContent, refs); })
+      .catch(() => {});
+  }
+
   // The specimens the recording is of, under its metadata, when the site has them.
   if (config.hasFeature('specimens')) {
     fetchRecordingSpecimens(id)
@@ -492,6 +506,35 @@ async function _showSpecimen(id) {
   }
 }
 
+// ── Publication page ─────────────────────────────────────────────
+// A publication's page is its own address (tools/build-static.mjs writes one for each).
+
+function loadPublicationById(id) {
+  applyPage('publication');
+  _showPublication(id);
+}
+
+async function _showPublication(id) {
+  const token = ++navTokens.publication;
+  const isCurrent = () => navTokens.publication === token;
+
+  showLoading(els.publicationContent, 'Loading publication…');
+  try {
+    const view = await fetchPublication(id);
+    if (!isCurrent()) return;
+    if (!view.reference) {
+      document.title = `Publication not found — ${config.siteName}`;
+      showError(els.publicationContent, 'Publication not found.');
+      return;
+    }
+    renderPublication(view, els.publicationContent, openTaxon);
+    document.title = `${String(view.reference.title ?? '').trim() || 'Publication'} — ${config.siteName}`;
+  } catch (e) {
+    if (!isCurrent()) return;
+    showError(els.publicationContent, `Could not load publication: ${e.message}`);
+  }
+}
+
 const _LOADING_INLINE =`<div class="loading" role="status" aria-live="polite" style="padding:0.5rem 0;font-size:12px"><div class="spinner" aria-hidden="true"></div>Loading…</div>`;
 
 function _renderTaxonShell(name) {
@@ -506,6 +549,12 @@ function _renderTaxonShell(name) {
           <button class="taxon-tab" data-tab="specimens" role="tab"
                   id="taxon-tabbtn-specimens" aria-controls="tab-specimens"
                   aria-selected="false" tabindex="-1">Specimens</button>
+          <button class="taxon-tab" data-tab="literature" role="tab"
+                  id="taxon-tabbtn-literature" aria-controls="tab-literature"
+                  aria-selected="false" tabindex="-1">Literature</button>
+          <button class="taxon-tab" data-tab="descriptions" role="tab"
+                  id="taxon-tabbtn-descriptions" aria-controls="tab-descriptions"
+                  aria-selected="false" tabindex="-1">Descriptions</button>
           <button class="taxon-tab" data-tab="traits" role="tab"
                   id="taxon-tabbtn-traits" aria-controls="tab-traits"
                   aria-selected="false" tabindex="-1">Traits</button>
@@ -525,6 +574,14 @@ function _renderTaxonShell(name) {
              aria-labelledby="taxon-tabbtn-specimens" hidden>
           <div id="specimens-content">${_LOADING_INLINE}</div>
         </div>
+        <div class="taxon-tab-panel" id="tab-literature" role="tabpanel"
+             aria-labelledby="taxon-tabbtn-literature" hidden>
+          <div id="literature-content">${_LOADING_INLINE}</div>
+        </div>
+        <div class="taxon-tab-panel" id="tab-descriptions" role="tabpanel"
+             aria-labelledby="taxon-tabbtn-descriptions" hidden>
+          <div id="descriptions-content">${_LOADING_INLINE}</div>
+        </div>
         <div class="taxon-tab-panel" id="tab-traits" role="tabpanel"
              aria-labelledby="taxon-tabbtn-traits" hidden>
           <div id="traits-content">${_LOADING_INLINE}</div>
@@ -543,6 +600,14 @@ function _renderTaxonShell(name) {
     </div>`;
 
   // The tabs of the features the site leaves out (config.features) go.
+  // The publication tabs go with the publications feature.
+  if (!config.hasFeature('publications')) {
+    for (const tab of ['literature', 'descriptions']) {
+      els.taxonContent.querySelector(`#taxon-tabbtn-${tab}`).remove();
+      els.taxonContent.querySelector(`#tab-${tab}`).remove();
+    }
+  }
+
   for (const tab of ['specimens', 'traits', 'annotations']) {
     if (config.hasFeature(tab)) continue;
     els.taxonContent.querySelector(`#taxon-tabbtn-${tab}`).remove();
@@ -689,6 +754,18 @@ function _showTaxon(name, page = 1) {
           .catch(() => { if (isCurrent()) renderAnnotations(els.taxonContent, null); });
       }
 
+      // The publications about the taxon, and its descriptions: the Literature and Descriptions tabs.
+      if (isNewTaxon && config.hasFeature('publications')) {
+        fetchTaxonLiterature(state.taxonRankParams ?? { taxon: name })
+          .then(refs => { if (isCurrent()) renderTaxonLiterature(els.taxonContent, refs); })
+          .catch(() => { if (isCurrent()) renderTaxonLiterature(els.taxonContent, null); });
+        taxonRowsByName()
+          .then(rows => rows?.get(name))
+          .then(row => (row ? fetchTaxonDescriptions(row.id) : []))
+          .then(descs => { if (isCurrent()) renderTaxonDescriptions(els.taxonContent, descs); })
+          .catch(() => { if (isCurrent()) renderTaxonDescriptions(els.taxonContent, null); });
+      }
+
       // The specimens of the taxon and of those under it: the Specimens tab, when the site has them.
       if (isNewTaxon && config.hasFeature('specimens')) {
         fetchSpecimensForTaxon(state.taxonRankParams ?? { taxon: name })
@@ -696,26 +773,30 @@ function _showTaxon(name, page = 1) {
           .catch(() => { if (isCurrent()) renderTaxonSpecimens(els.taxonContent, null); });
       }
 
+      // The hierarchy comes from a recording of the taxon or, with none, from the taxon's own row.
+      const showHierarchy = taxa => {
+        if (!isCurrent()) return;
+        renderTaxonomy(els.taxonContent, taxa, openTaxon);
+        const paramField = Object.keys(state.taxonRankParams ?? {})[0] ?? '';
+        const rank = (paramField === 'taxon'
+          ? (taxa?.Rank || taxa?.rank || '')
+          : paramField
+        ).toLowerCase();
+        if (ITALIC_RANKS.has(rank)) {
+          const h1 = els.taxonContent.querySelector('h1.detail-title');
+          if (h1) h1.classList.add('detail-title--italic');
+          const subtitle = els.taxonContent.querySelector('div.detail-title');
+          if (subtitle) subtitle.classList.add('detail-title--italic');
+        }
+      };
       if (data.length > 0) {
         fetchRecordingTaxa(data[0].id)
-          .then(taxa => {
-            if (!isCurrent()) return;
-            renderTaxonomy(els.taxonContent, taxa, openTaxon);
-            const paramField = Object.keys(state.taxonRankParams ?? {})[0] ?? '';
-            const rank = (paramField === 'taxon'
-              ? (taxa?.Rank || taxa?.rank || '')
-              : paramField
-            ).toLowerCase();
-            if (ITALIC_RANKS.has(rank)) {
-              const h1 = els.taxonContent.querySelector('h1.detail-title');
-              if (h1) h1.classList.add('detail-title--italic');
-              const subtitle = els.taxonContent.querySelector('div.detail-title');
-              if (subtitle) subtitle.classList.add('detail-title--italic');
-            }
-          })
+          .then(showHierarchy)
           .catch(() => { if (isCurrent()) renderTaxonomy(els.taxonContent, null, openTaxon); });
       } else {
-        renderTaxonomy(els.taxonContent, null, openTaxon);
+        taxonRowsByName()
+          .then(rows => showHierarchy(rows?.get(name) ?? null))
+          .catch(() => { if (isCurrent()) renderTaxonomy(els.taxonContent, null, openTaxon); });
       }
     })
     .catch(() => { if (isCurrent()) renderTaxonomy(els.taxonContent, null, openTaxon); });
@@ -1312,6 +1393,13 @@ async function route() {
     return;
   }
 
+  // A publication's page is its address too. A site with no publications has none: home.
+  const publicationId = publicationIdFromPath();
+  if (publicationId && config.hasFeature('publications')) {
+    loadPublicationById(publicationId);
+    return;
+  }
+
   // A taxon's page is found by the id in its address. ?taxon= takes precedence,
   // as ?id= does for a recording's page.
   const taxon = params.get('taxon') ?? await taxonNameForPage();
@@ -1523,7 +1611,8 @@ function init() {
   const back = () => (history.state?.inApp ? history.back() : goHome());
   $('detail-back').addEventListener('click', back);
   $('taxon-back').addEventListener('click', back);
-  $('specimen-back')?.addEventListener('click', back);   // a site with no specimens has no page for it
+  $('specimen-back')?.addEventListener('click', back);
+  $('publication-back')?.addEventListener('click', back);   // a site with no specimens has no page for it
 
   // The filters of the traits and annotations pages. A feature the site leaves out
   // (config.features) has no page, so nothing to set up.

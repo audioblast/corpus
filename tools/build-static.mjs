@@ -35,11 +35,14 @@ import { mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { esc, httpUrl, subgenusBrackets, nameHtml, specimenDetails, SPECIMEN_LIST_CAP } from '../js/format.js';
+import { esc, httpUrl, subgenusBrackets, nameHtml, specimenDetails, citationText, SPECIMEN_LIST_CAP } from '../js/format.js';
 
 const LIST_CAP = 100;                         // recordings listed on a taxon page
 const ASSOCIATED_SPECIMEN = 'http://rs.tdwg.org/ac/terms/associatedSpecimenReference';
 const TO_TAXON = 'http://rs.tdwg.org/dwc/iri/toTaxon';
+const REFERENCED_BY = 'http://purl.org/dc/terms/isReferencedBy';
+const ABOUT = 'http://purl.obolibrary.org/obo/IAO_0000136';
+const DESCRIPTION_SOURCE = 'http://purl.org/dc/terms/source';
 
 // ── Arguments ─────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -74,6 +77,7 @@ const SITE_NAME = config.siteName;
 // Whether the site has specimens: a page for each, and the lists of them on a recording's
 // and a taxon's page (features.specimens).
 const SPECIMENS = config.hasFeature('specimens');
+const PUBLICATIONS = config.hasFeature('publications');
 
 // The browse site, if the site links its taxa to one: its origin, from the address
 // its config gives for a taxon. Null if it links to none.
@@ -157,7 +161,7 @@ const APP_PAGE = (await readFile(PAGE_PATH, 'utf8')).replace(/\r\n/g, '\n');
 // checked against the page, which the pages are built from.
 const slotOf = view => `<div id="${view}-content">\n      <div class="loading"><div class="spinner"></div>Loading…</div>\n    </div>`;
 const pageOf = view => `<div id="page-${view}" class="page">`;
-for (const view of SPECIMENS ? ['detail', 'taxon', 'specimen'] : ['detail', 'taxon']) {
+for (const view of ['detail', 'taxon', ...(SPECIMENS ? ['specimen'] : []), ...(PUBLICATIONS ? ['publication'] : [])]) {
   for (const anchor of [slotOf(view), pageOf(view), '<meta charset="UTF-8">', '</head>']) {
     if (!APP_PAGE.includes(anchor)) throw new Error(`${PAGE_PATH} has changed: ${anchor} is not in it`);
   }
@@ -188,7 +192,7 @@ function appPage({ view, title, description, canonical, jsonld, content, taxon =
 }
 
 // ── Build ─────────────────────────────────────────────────────────
-console.log('Fetching taxa, recordings and specimens…');
+console.log(`Fetching taxa, recordings${SPECIMENS ? ', specimens' : ''}${PUBLICATIONS ? ', publications' : ''}…`);
 const [taxaAll, recsAll, specimensAll, recLinks, taxonLinks] = await Promise.all([
   fetchAll('taxa'),
   fetchAll('recordings'),
@@ -204,6 +208,26 @@ const [taxaAll, recsAll, specimensAll, recLinks, taxonLinks] = await Promise.all
 ]);
 console.log(`  ${taxaAll.length} taxa, ${recsAll.length} recordings`
   + (SPECIMENS ? `, ${specimensAll.length} specimens` : ''));
+const [refsAll, descsAll, recRefLinks, refTaxLinks, descTaxLinks, descRefLinks] = await Promise.all([
+  PUBLICATIONS ? fetchAll('references') : [],
+  PUBLICATIONS ? fetchAll('descriptions') : [],
+  PUBLICATIONS ? fetchAll('links', {
+    subject_type: 'recordings', subject_source: SOURCE, object_type: 'references', object_source: SOURCE,
+    predicate: REFERENCED_BY,
+  }) : [],
+  PUBLICATIONS ? fetchAll('links', {
+    subject_type: 'references', subject_source: SOURCE, object_type: 'taxa', object_source: SOURCE,
+    predicate: ABOUT,
+  }) : [],
+  PUBLICATIONS ? fetchAll('links', {
+    subject_type: 'descriptions', subject_source: SOURCE, object_type: 'taxa', object_source: SOURCE,
+    predicate: ABOUT,
+  }) : [],
+  PUBLICATIONS ? fetchAll('links', {
+    subject_type: 'descriptions', subject_source: SOURCE, object_type: 'references', object_source: SOURCE,
+    predicate: DESCRIPTION_SOURCE,
+  }) : [],
+]);
 if (!recsAll.length) console.warn(`  No recordings for source "${SOURCE}": writing the sitemap and robots.txt only. Check the source in the site's config.`);
 const browsePages = await browsePaths();
 
@@ -245,8 +269,17 @@ for (const r of recs) {
   }
 }
 
-// Taxa to write: those with recordings, plus (when limited) nothing else.
-let taxa = taxaAll.filter(t => recsByTaxon.has(String(t.id)));
+// Taxa that a description or publication is about, counting up through their ancestors as
+// recordings do: a taxon above one has a page too, for its breadcrumb and its literature.
+const contentTaxonIds = new Set();
+for (const l of [...refTaxLinks, ...descTaxLinks]) {
+  const t = taxonById.get(String(l.object_id));
+  if (!t) continue;
+  for (const a of [...ancestors(t), t]) contentTaxonIds.add(String(a.id));
+}
+
+// Taxa to write: those with recordings, descriptions or publications, and those above them.
+let taxa = taxaAll.filter(t => recsByTaxon.has(String(t.id)) || contentTaxonIds.has(String(t.id)));
 if (LIMIT_T) taxa = taxa.slice(0, LIMIT_T);
 const taxaWritten = new Set(taxa.map(t => String(t.id)));
 
@@ -331,9 +364,83 @@ const specimenRecordingRow = r => `<tr><td><a href="${BASE}r/${esc(r.id)}/">`
 // A recording's specimens, in order.
 const recordingSpecimens = id => [...(specsOfRec.get(id) ?? [])].map(sid => specimenById.get(sid)).sort(byId);
 
+// ── Publications and descriptions ─────────────────────────────────
+// A publication has a page of its own, at p/<id>/. A recording cites publications
+// (REFERENCED_BY), a publication is about taxa (ABOUT), and a description is about a taxon
+// (ABOUT) and cites publications (DESCRIPTION_SOURCE).
+const refById   = new Map(refsAll.map(r => [String(r.id), r]));
+const descById  = new Map(descsAll.map(d => [String(d.id), d]));
+const refsOfRec = new Map();    // recording id -> its publications' ids
+const recsOfRef = new Map();    // publication id -> its recordings' ids, those with pages
+for (const l of recRefLinks) {
+  const rec = String(l.subject_id), ref = String(l.object_id);
+  if (!refById.has(ref)) continue;
+  if (!refsOfRec.has(rec)) refsOfRec.set(rec, new Set());
+  refsOfRec.get(rec).add(ref);
+  if (recById.has(rec)) {
+    if (!recsOfRef.has(ref)) recsOfRef.set(ref, new Set());
+    recsOfRef.get(ref).add(rec);
+  }
+}
+const taxaOfRef = new Map();    // publication id -> the taxon rows it is about
+for (const l of refTaxLinks) {
+  const t = taxonById.get(String(l.object_id)), ref = String(l.subject_id);
+  if (!t || !refById.has(ref)) continue;
+  if (!taxaOfRef.has(ref)) taxaOfRef.set(ref, []);
+  taxaOfRef.get(ref).push(t);
+}
+// A taxon's publications, counting up through its ancestors, as its recordings do.
+const refsByTaxon = new Map();
+for (const [ref, taxa] of taxaOfRef) {
+  for (const t of taxa) {
+    for (const a of [...ancestors(t), t]) {
+      const k = String(a.id);
+      if (!refsByTaxon.has(k)) refsByTaxon.set(k, new Set());
+      refsByTaxon.get(k).add(ref);
+    }
+  }
+}
+const taxonOfDesc = new Map();  // description id -> the taxon row it is about
+for (const l of descTaxLinks) {
+  const d = String(l.subject_id), t = taxonById.get(String(l.object_id));
+  if (t && descById.has(d) && !taxonOfDesc.has(d)) taxonOfDesc.set(d, t);
+}
+const descsOfTaxon = new Map(); // taxon id -> its own descriptions (not those of the taxa under it)
+for (const [d, t] of taxonOfDesc) {
+  const k = String(t.id);
+  if (!descsOfTaxon.has(k)) descsOfTaxon.set(k, []);
+  descsOfTaxon.get(k).push(d);
+}
+const refsOfDesc = new Map();   // description id -> the publications it cites
+for (const l of descRefLinks) {
+  const d = String(l.subject_id), ref = String(l.object_id);
+  if (!descById.has(d) || !refById.has(ref)) continue;
+  if (!refsOfDesc.has(d)) refsOfDesc.set(d, new Set());
+  refsOfDesc.get(d).add(ref);
+}
+const descsOfRef = new Map();   // publication id -> the descriptions that cite it
+for (const [d, refs] of refsOfDesc) {
+  for (const ref of refs) {
+    if (!descsOfRef.has(ref)) descsOfRef.set(ref, new Set());
+    descsOfRef.get(ref).add(d);
+  }
+}
+
+const byYearDesc = (a, b) => Number(b.year ?? 0) - Number(a.year ?? 0) || byId(a, b);
+
+// A publication as a row of a list: its citation, linked to its page.
+const publicationRow = r => `<tr><td><a href="${BASE}p/${esc(r.id)}/">${esc(citationText(r))}</a></td></tr>`;
+
+// A description's topic as a heading: its first letter capitalised.
+const topicLabel = t => {
+  const s = clean(t);
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Description';
+};
+
 await rm(path.join(OUT, 'r'), { recursive: true, force: true });
 await rm(path.join(OUT, 't'), { recursive: true, force: true });
 await rm(path.join(OUT, 's'), { recursive: true, force: true });
+await rm(path.join(OUT, 'p'), { recursive: true, force: true });
 
 async function write(rel, html) {
   const file = path.join(OUT, rel);
@@ -372,6 +479,7 @@ for (const r of recs) {
   ].filter(([, v]) => v !== '' && v != null);
 
   const recSpecs = recordingSpecimens(id);
+  const recRefs = [...(refsOfRec.get(id) ?? [])].map(rid => refById.get(rid)).filter(Boolean).sort(byYearDesc);
 
   // The detail view's markup, as js/render.js draws it, so that the page the
   // app takes over looks the same before and after its scripts run.
@@ -395,6 +503,12 @@ for (const r of recs) {
       '<h3 class="detail-section-heading">Specimens</h3>',
       '<table class="meta-table">',
       ...recSpecs.map(specimenRow),
+      '</table>',
+    ] : []),
+    ...(recRefs.length ? [
+      '<h3 class="detail-section-heading">Publications</h3>',
+      '<table class="meta-table">',
+      ...recRefs.map(publicationRow),
       '</table>',
     ] : []),
     '</div></div>',
@@ -438,6 +552,13 @@ for (const t of taxa) {
   const browse    = browseHref(t);
   const specs     = [...(specsByTaxon.get(id) ?? [])].sort(byName);
   const shownSpecs = specs.slice(0, SPECIMEN_LIST_CAP);
+  const lits = PUBLICATIONS
+    ? [...(refsByTaxon.get(id) ?? [])].map(rid => refById.get(rid)).filter(Boolean).sort(byYearDesc)
+    : [];
+  const shownLits = lits.slice(0, SPECIMEN_LIST_CAP);
+  const descs = PUBLICATIONS
+    ? (descsOfTaxon.get(id) ?? []).map(d => descById.get(d)).filter(Boolean).sort(byId)
+    : [];
 
   // The taxon view as js/app.js draws it: the taxon's name and rank, its
   // recordings (the first LIST_CAP, each linked to its page) and its place in
@@ -469,6 +590,24 @@ for (const t of taxa) {
       specs.length > shownSpecs.length
         ? `<p class="detail-meta">The first ${shownSpecs.length} of ${specs.length} specimens are listed here.</p>` : '',
     ] : []),
+    ...(lits.length ? [
+      '<h3 class="detail-section-heading">Literature</h3>',
+      '<table class="meta-table">',
+      ...shownLits.map(publicationRow),
+      '</table>',
+      lits.length > shownLits.length
+        ? `<p class="detail-meta">The first ${shownLits.length} of ${lits.length} publications are listed here.</p>` : '',
+    ] : []),
+    ...descs.flatMap(d => {
+      const sources = [...(refsOfDesc.get(String(d.id)) ?? [])].map(rid => refById.get(rid)).filter(Boolean);
+      return [
+        `<h3 class="detail-section-heading">${esc(topicLabel(d.topic))}</h3>`,
+        `<p>${esc(String(d.value ?? '').trim())}</p>`,
+        sources.length
+          ? `<p class="detail-meta">Source: ${sources.map(r => `<a href="${BASE}p/${esc(r.id)}/">${esc(citationText(r))}</a>`).join('; ')}</p>`
+          : '',
+      ].filter(Boolean);
+    }),
     '</div><div class="detail-side">',
     '<div class="sidebar-card">',
     '<div class="sidebar-title">Taxonomy</div>',
@@ -549,11 +688,81 @@ if (SPECIMENS) for (const s of specimensAll) {
   await write(`s/${id}/index.html`, appPage({ view: 'specimen', title, description: desc, canonical, jsonld, content }));
 }
 
+// ── Publication pages ─────────────────────────────────────────────
+// A page for each publication of the source: its citation and abstract, the recordings that
+// cite it, the taxa it is about, and the descriptions that cite it.
+if (PUBLICATIONS) for (const r of refsAll) {
+  const id        = String(r.id);
+  const canonical = `${SITE}/p/${id}/`;
+  const title     = clean(r.title) || 'Untitled publication';
+  const doi       = clean(r.doi);
+  const url       = httpUrl(r.url);
+  const files     = String(r.attachments ?? '').split(';').map(s => httpUrl(s.trim())).filter(Boolean);
+  const abstract  = String(r.abstract ?? '').trim();
+  const recs      = [...(recsOfRef.get(id) ?? [])].map(rid => recById.get(rid)).filter(Boolean).sort(byId);
+  const taxa      = (taxaOfRef.get(id) ?? []).slice().sort((a, b) => a.taxon.localeCompare(b.taxon));
+  const descs     = [...(descsOfRef.get(id) ?? [])].map(d => descById.get(d)).filter(Boolean).sort(byId);
+
+  const actions = [
+    doi && `<a class="detail-action-link" href="https://doi.org/${esc(encodeURI(doi))}" target="_blank" rel="noopener">DOI ${esc(doi)}</a>`,
+    url && `<a class="detail-action-link" href="${esc(url)}" target="_blank" rel="noopener">Original page</a>`,
+    ...files.map((f, i) => `<a class="detail-action-link" href="${esc(f)}" target="_blank" rel="noopener">File${files.length > 1 ? ` ${i + 1}` : ''}</a>`),
+  ].filter(Boolean).join('');
+
+  // The view as the app draws a publication: its citation, abstract, recordings, taxa and
+  // descriptions. Without JavaScript, this is the page.
+  const content = [
+    `<h1 class="detail-title">${esc(title)}</h1>`,
+    `<div class="detail-meta">#${esc(id)} · ${esc(SOURCE)}${r.type_name ? ` · ${esc(clean(r.type_name))}` : ''}</div>`,
+    actions ? `<div class="detail-actions">${actions}</div>` : '',
+    '<div class="detail-grid"><div class="detail-main">',
+    '<h3 class="detail-section-heading">Citation</h3>',
+    `<p>${esc(citationText(r))}</p>`,
+    abstract ? `<h3 class="detail-section-heading">Abstract</h3><p>${esc(abstract)}</p>` : '',
+    recs.length ? [
+      '<h3 class="detail-section-heading">Recordings</h3>',
+      '<table class="meta-table">',
+      ...recs.map(specimenRecordingRow),
+      '</table>',
+    ].join('\n      ') : '',
+    taxa.length ? [
+      '<h3 class="detail-section-heading">Taxa</h3>',
+      '<table class="meta-table">',
+      ...taxa.map(t => `<tr><td>${taxonLink(t)}</td></tr>`),
+      '</table>',
+    ].join('\n      ') : '',
+    descs.length ? [
+      '<h3 class="detail-section-heading">Descriptions</h3>',
+      '<table class="meta-table">',
+      ...descs.map(d => {
+        const t = taxonOfDesc.get(String(d.id));
+        return `<tr><td>${t ? taxonLink(t) : ''}</td><td>${esc(topicLabel(d.topic))}</td></tr>`;
+      }),
+      '</table>',
+    ].join('\n      ') : '',
+    '</div></div>',
+  ].filter(Boolean).join('\n      ');
+
+  const desc = citationText(r).slice(0, 300) || `Publication from ${SITE_NAME}.`;
+  const jsonld = {
+    '@context': 'https://schema.org',
+    '@type': 'ScholarlyArticle',
+    name: title,
+    url: canonical,
+    ...(doi && { identifier: `https://doi.org/${doi}` }),
+    ...(clean(r.author) && { author: clean(r.author) }),
+    ...(clean(r.year) && { datePublished: clean(r.year) }),
+  };
+
+  await write(`p/${id}/index.html`, appPage({ view: 'publication', title, description: desc, canonical, jsonld, content }));
+}
+
 // ── Sitemap ───────────────────────────────────────────────────────
 const urls = [`${SITE}/`,
   ...taxa.map(t => `${SITE}/t/${t.id}/`),
   ...recs.map(r => `${SITE}/r/${r.id}/`),
-  ...(SPECIMENS ? specimensAll.map(s => `${SITE}/s/${s.id}/`) : [])];
+  ...(SPECIMENS ? specimensAll.map(s => `${SITE}/s/${s.id}/`) : []),
+  ...(PUBLICATIONS ? refsAll.map(r => `${SITE}/p/${r.id}/`) : [])];
 await write('sitemap.xml',
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
   + urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n') + '\n</urlset>\n');
@@ -570,7 +779,7 @@ Sitemap: ${SITE}/sitemap.xml
 // search engines take that as a permanent move. The host sends a request for the
 // old address without its last slash on to the address with it. These come last,
 // so that an old address can't take the place of a file the build has written.
-const RESERVED = new Set(['r', 's', 't', 'config']);
+const RESERVED = new Set(['r', 'p', 's', 't', 'config']);
 const HOME = new URL(BASE, SITE + '/');
 let movedCount = 0;
 
@@ -634,8 +843,9 @@ if (config.redirects) {
   // to: one of a recording type the site leaves out, or left out by a limit.
   const pathOf = rel => new URL(rel, HOME).pathname;
   const written = new Set([...recs.map(r => pathOf(`r/${r.id}/`)), ...taxa.map(t => pathOf(`t/${t.id}/`)),
-    ...(SPECIMENS ? specimensAll.map(s => pathOf(`s/${s.id}/`)) : [])]);
-  const isPage = new RegExp(`^${escapeRegExp(HOME.pathname)}[rst]/[^/]+/$`);
+    ...(SPECIMENS ? specimensAll.map(s => pathOf(`s/${s.id}/`)) : []),
+    ...(PUBLICATIONS ? refsAll.map(r => pathOf(`p/${r.id}/`)) : [])]);
+  const isPage = new RegExp(`^${escapeRegExp(HOME.pathname)}[rstp]/[^/]+/$`);
   const gone = [];
   async function move([from, to]) {
     const old = await oldPath(from);
@@ -659,5 +869,5 @@ if (config.redirects) {
 }
 
 console.log(`Wrote ${recs.length} recording pages, ${taxa.length} taxon pages`
-  + (SPECIMENS ? `, ${specimensAll.length} specimen pages` : '') + `, sitemap (${urls.length} URLs)`
+  + (SPECIMENS ? `, ${specimensAll.length} specimen pages` : '') + (PUBLICATIONS ? `, ${refsAll.length} publication pages` : '') + `, sitemap (${urls.length} URLs)`
   + (config.redirects ? `, ${movedCount} old addresses` : '') + ` to ${OUT}`);

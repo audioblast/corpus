@@ -15,7 +15,9 @@
 //   - specimens at three places, and one without coordinates, so that one
 //     recording is not on the map;
 //   - specimens identified as taxa, and one identified as none, and one of a
-//     recording the site excludes, so that its page shows no recordings.
+//     recording the site excludes, so that its page shows no recordings;
+//   - a publication cited by a recording, about a taxon, and cited by one of that taxon's descriptions;
+//   - a genus and a species with no recordings, so that their hierarchy comes from their own rows.
 
 const SOURCE = 'test-collection';
 
@@ -39,6 +41,10 @@ const taxa = [
   taxon('9', '8', 'Tettigonia viridissima', 'Species',
     { ...orthoptera, family: 'Tettigoniidae', genus: 'Tettigonia', species: 'Tettigonia viridissima' }),
   taxon('10', '3', 'Gryllotalpidae', '', { ...orthoptera, family: 'Gryllotalpidae' }),
+  // A genus and a species with no recordings, so that their hierarchy comes from their own rows. The species has
+  // a description, so it has a page, and the genus above it has one too.
+  taxon('11', '4', 'Acheta', 'Genus', { ...orthoptera, family: 'Gryllidae', genus: 'Acheta' }),
+  taxon('12', '11', 'Acheta domesticus', 'Species', { ...orthoptera, family: 'Gryllidae', genus: 'Acheta', species: 'Acheta domesticus' }),
 ];
 
 // Every recording plays the same generated file (media.js), under its own address.
@@ -126,4 +132,39 @@ const taxonLinks = [['S1', '6'], ['S2', '6'], ['S3', '9'], ['S4', '5']].map(([sp
   qualifier: null, remarks: null,
 }));
 
-export default { source: SOURCE, taxa, recordings, traits, annotations, specimens, links: [...links, ...taxonLinks] };
+// Publications: 40 cites recording 7, is about the cricket (taxon 6), and is cited by
+// description 41 of that taxon.
+const references = [
+  { source: SOURCE, id: '40', type: 'article', title: 'Calling songs of field crickets', author: 'Ragge, D. R.',
+    year: '1990', journal: 'Bulletin of Insects', volume: '59', number: '1', pages: '1-35',
+    doi: '10.0000/fixture.40', url: null, attachments: null, abstract: 'A test abstract.',
+    type_name: 'Journal Article', publisher: null, booktitle: null, institution: null, school: null },
+];
+const descriptions = [
+  { source: SOURCE, id: '41', topic: 'behaviour', value: 'Males call from grass stems at dusk.',
+    topic_link: 'http://rs.tdwg.org/ontology/voc/SPMInfoItems#Behaviour' },
+  { source: SOURCE, id: '42', topic: 'behaviour', value: 'Males call at night, from the leaf litter.',
+    topic_link: 'http://rs.tdwg.org/ontology/voc/SPMInfoItems#Behaviour' },
+];
+const publicationLinks = [
+  { source: SOURCE, id: 'pub-link-7', subject_type: 'recordings', subject_source: SOURCE, subject_id: '7',
+    predicate: 'http://purl.org/dc/terms/isReferencedBy', object_type: 'references', object_source: SOURCE,
+    object_id: '40', qualifier: null, remarks: null },
+  { source: SOURCE, id: 'pub-link-about', subject_type: 'references', subject_source: SOURCE, subject_id: '40',
+    predicate: 'http://purl.obolibrary.org/obo/IAO_0000136', object_type: 'taxa', object_source: SOURCE,
+    object_id: '6', qualifier: null, remarks: null },
+  { source: SOURCE, id: 'pub-link-desc-about', subject_type: 'descriptions', subject_source: SOURCE, subject_id: '41',
+    predicate: 'http://purl.obolibrary.org/obo/IAO_0000136', object_type: 'taxa', object_source: SOURCE,
+    object_id: '6', qualifier: null, remarks: null },
+  { source: SOURCE, id: 'pub-link-desc-source', subject_type: 'descriptions', subject_source: SOURCE, subject_id: '41',
+    predicate: 'http://purl.org/dc/terms/source', object_type: 'references', object_source: SOURCE,
+    object_id: '40', qualifier: null, remarks: null },
+  { source: SOURCE, id: 'pub-link-desc-about-12', subject_type: 'descriptions', subject_source: SOURCE, subject_id: '42',
+    predicate: 'http://purl.obolibrary.org/obo/IAO_0000136', object_type: 'taxa', object_source: SOURCE,
+    object_id: '12', qualifier: null, remarks: null },
+];
+
+export default {
+  source: SOURCE, taxa, recordings, traits, annotations, specimens,
+  links: [...links, ...taxonLinks, ...publicationLinks], references, descriptions,
+};

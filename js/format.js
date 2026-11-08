@@ -110,3 +110,21 @@ export function specimenDetails(s, taxonHtml = '') {
   ];
   return rows.filter(([, v]) => v !== '');
 }
+
+// ── Publications ──────────────────────────────────────────────────
+
+/**
+ * A publication's citation as one line of text: its authors and year, its title, and where
+ * it was published, with its volume, number and pages.
+ *   { author: 'Ragge, D. R.', year: '1990', title: 'Songs', journal: 'Bull', volume: '59',
+ *     number: '1', pages: '1-35' }  →  'Ragge, D. R. (1990). Songs. Bull, 59(1): 1-35.'
+ */
+export function citationText(r) {
+  const s = v => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const year = s(r.year);
+  const head = [s(r.author), year ? `(${year})` : ''].filter(Boolean).join(' ');
+  const venue = s(r.journal) || s(r.booktitle) || s(r.publisher) || s(r.institution) || s(r.school);
+  const volume = [s(r.volume), s(r.number) ? `(${s(r.number)})` : ''].join('').trim();
+  const where = ([venue, volume].filter(Boolean).join(', ') + (s(r.pages) ? `: ${s(r.pages)}` : '')).trim();
+  return [head && `${head}.`, s(r.title) && `${s(r.title)}.`, where && `${where}.`].filter(Boolean).join(' ');
+}

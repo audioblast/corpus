@@ -31,7 +31,7 @@ test.describe('without Browse taxa and the map', () => {
     await page.goto(site.url());
     await expect(navButtons(page)).toHaveText(['Search', 'Browse traits', 'Browse annotations', 'Browse specimens', 'About']);
     await expect(page.locator('.hero-actions button')).toHaveText(['Search recordings']);
-    for (const [stat, count] of [['recordings', '6'], ['taxa', '10'], ['traits', '3'], ['annotations', '3']]) {
+    for (const [stat, count] of [['recordings', '6'], ['taxa', '12'], ['traits', '3'], ['annotations', '3']]) {
       await expect(page.locator(`#stat-${stat} strong`)).toHaveText(count);
     }
     await expectHome(page);
@@ -58,7 +58,7 @@ test.describe('without Browse taxa and the map', () => {
     await page.locator('#taxon-links .taxon-name', { hasText: CRICKET }).click();
     await expect(page.locator('#taxon-content h1')).toHaveText(CRICKET);
     await expect(page).toHaveURL(site.url('t/6/'));
-    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Specimens', 'Traits', 'Annotations']);
+    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Specimens', 'Literature', 'Descriptions', 'Traits', 'Annotations']);
   });
 });
 
@@ -71,7 +71,7 @@ test.describe('without Browse traits and Browse annotations', () => {
     await expect(navButtons(page)).toHaveText(['Search', 'Browse taxa', 'Browse specimens', 'Recordings map', 'About']);
     await expect(page.locator('.header-stat')).toHaveCount(2);
     await expect(page.locator('#stat-recordings strong')).toHaveText('6');
-    await expect(page.locator('#stat-taxa strong')).toHaveText('10');
+    await expect(page.locator('#stat-taxa strong')).toHaveText('12');
     await expectHome(page);
 
     for (const address of ['?page=traits', '?page=annotations']) {
@@ -91,11 +91,13 @@ test.describe('without Browse traits and Browse annotations', () => {
     // A taxon's page has its recordings and specimens, and no traits or annotations
     await page.goto(site.url('t/6/'));
     await expect(page.locator('#taxon-count')).toHaveText('2 recordings for Gryllus Gryllus campestris');
-    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Specimens']);
+    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Specimens', 'Literature', 'Descriptions']);
 
     // A recording keeps its own annotations
     await page.goto(site.url('r/7/'));
     await expect(page.locator('#detail-annotations-block tbody tr')).toHaveCount(2);
+    // The recording's publications are fetched too: wait for them, so that the check ends after they have loaded.
+    await expect(page.locator('#detail-publications-block a')).toHaveCount(1);
 
     expect(requests.filter(url => /\/data\/(traits|traitstaxa)\//.test(url)), 'traits requests').toEqual([]);
     expect(requests.filter(url => /\/data\/annomate\//.test(url) && !/[?&]source_id=/.test(url)),

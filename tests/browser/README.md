@@ -1,6 +1,6 @@
 # Browser checks
 
-These checks run the app in Chromium, Firefox and WebKit with [Playwright](https://playwright.dev). They cover what used to be checked by hand: the home page, search, the browse pages, a recording's page and its player, taxon pages, the About page, the recordings map, a source with no records, and sites that leave features out. `npm test` doesn't run them: it stays fast, with no dependencies.
+These checks run the app in Chromium, Firefox and WebKit with [Playwright](https://playwright.dev). They cover what used to be checked by hand: the home page, search, the browse pages, a recording's page and its player, taxon pages, specimen and publication pages, the About page, the recordings map, a source with no records, and sites that leave features out. `npm test` doesn't run them: it stays fast, with no dependencies.
 
 ## Running them
 
@@ -28,11 +28,11 @@ In CI, `.github/workflows/test.yml` runs them in a job for each browser. A check
 
 `sites/` holds four sites' `config/` folders, as a real site has:
 
-- `collection`, like bio's, on the collection in `data/collection.js`. It has three families of Orthoptera, a name with a subgenus, recordings identified to species, to a genus with a species below it and to a family with none, traits, annotations and specimens. It also has a Soundscape, which the site leaves out, and a recording whose specimen has no coordinates.
+- `collection`, like bio's, on the collection in `data/collection.js`. It has three families of Orthoptera, a name with a subgenus, recordings identified to species, to a genus with a species below it and to a family with none, traits, annotations, specimens, publications and descriptions. It also has a Soundscape, which the site leaves out, and a recording whose specimen has no coordinates.
 - `empty`, like soil's, on a source with no records (`data/empty.js`).
 - `no-browse` and `no-traits`, on the same collection as `collection`, each with features left out (`features` in `js/config.js`): Browse taxa and the map, or Browse traits and Browse annotations. `features.spec.js` checks that a feature that is off has no place in the page, that its address shows home, and that the app makes none of its requests.
 
-Each worker assembles a site once, in a temp folder, as a site's Pages workflow does: `tools/build-page.mjs` writes its `index.html` and `main.js`, and `tools/build-static.mjs` writes its recording and taxon pages from the fake API. The page's preconnect hints are taken out, because they open connections that the harness can't answer.
+Each worker assembles a site once, in a temp folder, as a site's Pages workflow does: `tools/build-page.mjs` writes its `index.html` and `main.js`, and `tools/build-static.mjs` writes its recording, taxon, specimen and publication pages from the fake API. The page's preconnect hints are taken out, because they open connections that the harness can't answer.
 
 ## The fakes
 

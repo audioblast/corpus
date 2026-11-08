@@ -9,6 +9,7 @@
   var onRecord = /\/r\/[^/]+\/?(index\.html)?$/.test(location.pathname);
   var onTaxon = /\/t\/[^/]+\/?(index\.html)?$/.test(location.pathname);
   var onSpecimen = /\/s\/[^/]+\/?(index\.html)?$/.test(location.pathname);
+  var onPublication = /\/p\/[^/]+\/?(index\.html)?$/.test(location.pathname);
   // The named page, if the page has it. This runs before the site's config is
   // read, but a feature the site leaves out (config.features) isn't in its page,
   // so its address is taken as one with no page, as route() in app.js takes it.
@@ -21,6 +22,7 @@
            : onRecord                           ? 'detail'
            : onTaxon && !filtered               ? 'taxon'
            : onSpecimen                         ? 'specimen'
+           : onPublication                      ? 'publication'
            : p.get('taxon') && !filtered        ? 'taxon'
            : named                              ? named
            :                                      'home';

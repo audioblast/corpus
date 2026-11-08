@@ -315,6 +315,45 @@ export function specimens({
  *
  * @returns {Promise<{data: object[], last_page: number, notes: object}>}
  */
+// ── /data/references/ ─────────────────────────────────────────────
+
+/**
+ * Query the bibliographic references (publications) held for a source. Parameters:
+ *   source, id (exact, several may be comma-joined), title (contains), author (contains),
+ *   year (range), page, page_size (default 250), output
+ *
+ * @returns {Promise<{data: object[], last_page: number, notes: object}>}
+ */
+export function references({
+  source, id, title, author, year,
+  page = 1, page_size = 250, output = 'JSON',
+} = {}) {
+  return get('/data/references/' + qs({
+    source, id, title, author, year, page, page_size, output,
+  }));
+}
+
+// ── /data/descriptions/ ───────────────────────────────────────────
+
+/**
+ * Query the descriptions a source holds: what it says about something in prose, such as
+ * how a taxon behaves. Parameters:
+ *   source, id (exact, several may be comma-joined), topic (exact), value (contains),
+ *   topic_link (exact), page, page_size (default 250), output
+ *
+ * @returns {Promise<{data: object[], last_page: number, notes: object}>}
+ */
+export function descriptions({
+  source, id, topic, value, topic_link,
+  page = 1, page_size = 250, output = 'JSON',
+} = {}) {
+  return get('/data/descriptions/' + qs({
+    source, id, topic, value, topic_link, page, page_size, output,
+  }));
+}
+
+// ── /data/links/ ──────────────────────────────────────────────────
+
 export function links({
   source, subject_type, subject_source, subject_id, predicate,
   object_type, object_source, object_id, qualifier,
@@ -441,6 +480,8 @@ export function forSource(source) {
     annotations:       bind(annotations),
     birdnetSelections: bind(birdnetSelections),
     specimens:         bind(specimens),
+    references:        bind(references),
+    descriptions:      bind(descriptions),
     links:             bind(links),
     dataCounts:        bind(dataCounts),
     autocomplete:      (module, param, opts = {}) => autocomplete(module, param, { ...opts, source }),

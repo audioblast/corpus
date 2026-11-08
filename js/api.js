@@ -794,3 +794,178 @@ export function fetchSpecimenList(filters = {}, page = 1, pageSize = 50) {
   return ab().specimens({ ...filters, page, page_size: pageSize });
 }
 
+// ── Publications and descriptions ─────────────────────────────────
+// A recording is referenced by publications (REFERENCED_BY). A publication is about taxa
+// (ABOUT). A description is about a taxon (ABOUT) and cites a publication (DESCRIPTION_SOURCE).
+// A publication's page, a recording's list of them, and a taxon's Literature and Descriptions
+// tabs are read from those links. The build reads them too (tools/build-static.mjs).
+
+const REFERENCED_BY = 'http://purl.org/dc/terms/isReferencedBy';
+const ABOUT = 'http://purl.obolibrary.org/obo/IAO_0000136';
+const DESCRIPTION_SOURCE = 'http://purl.org/dc/terms/source';
+
+// Most recent first.
+const _byYear = (a, b) => Number(b.year ?? 0) - Number(a.year ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+// The taxon that each of some descriptions is about: description id -> taxon row.
+async function _descriptionTaxa(ids) {
+  if (!ids.length) return new Map();
+  const [links, byId] = await Promise.all([
+    _fetchAll(ab().links, {
+      subject_type: 'descriptions', subject_source: config.source, subject_id: ids.join(','),
+      object_type: 'taxa', object_source: config.source, predicate: ABOUT,
+    }),
+    _taxaById(),
+  ]);
+  const out = new Map();
+  for (const l of links) {
+    const t = byId.get(String(l.object_id));
+    if (t && !out.has(String(l.subject_id))) out.set(String(l.subject_id), t);
+  }
+  return out;
+}
+
+// The publications that each of some descriptions cites: description id -> references.
+async function _descriptionSources(ids) {
+  if (!ids.length) return new Map();
+  const links = await _fetchAll(ab().links, {
+    subject_type: 'descriptions', subject_source: config.source, subject_id: ids.join(','),
+    object_type: 'references', object_source: config.source, predicate: DESCRIPTION_SOURCE,
+  });
+  const refs = new Map(
+    (await _rowsByIds(ab().references, [...new Set(links.map(l => String(l.object_id)))]))
+      .map(r => [String(r.id), r]),
+  );
+  const out = new Map();
+  for (const l of links) {
+    const r = refs.get(String(l.object_id));
+    if (!r) continue;
+    const k = String(l.subject_id);
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push(r);
+  }
+  return out;
+}
+
+/**
+ * The publications that cite a recording, most recent first.
+ * @param {string|number} id  recording ID within the source
+ * @returns {Promise<object[]>}
+ */
+export async function fetchRecordingReferences(id) {
+  const links = await _fetchAll(ab().links, {
+    subject_type: 'recordings', subject_source: config.source, subject_id: String(id),
+    object_type: 'references', object_source: config.source, predicate: REFERENCED_BY,
+  });
+  const ids = [...new Set(links.map(l => String(l.object_id)))];
+  return (await _rowsByIds(ab().references, ids)).sort(_byYear);
+}
+
+/**
+ * A publication's page: the publication, the recordings that cite it, the taxa it is about,
+ * and the descriptions that cite it (each with the taxon it describes). `reference` is null
+ * if there is no such publication.
+ * @param {string|number} id  reference ID within the source
+ * @returns {Promise<{reference: object|null, recordings: object[], taxa: object[], descriptions: object[]}>}
+ */
+export async function fetchPublication(id) {
+  const key = String(id);
+  const [reference, recLinks, taxLinks, descLinks] = await Promise.all([
+    ab().references({ id: key, page_size: 1 }).then(res => res.data?.[0] ?? null),
+    _fetchAll(ab().links, {
+      subject_type: 'recordings', subject_source: config.source,
+      object_type: 'references', object_source: config.source, object_id: key, predicate: REFERENCED_BY,
+    }),
+    _fetchAll(ab().links, {
+      subject_type: 'references', subject_source: config.source, subject_id: key,
+      object_type: 'taxa', object_source: config.source, predicate: ABOUT,
+    }),
+    _fetchAll(ab().links, {
+      subject_type: 'descriptions', subject_source: config.source,
+      object_type: 'references', object_source: config.source, object_id: key, predicate: DESCRIPTION_SOURCE,
+    }),
+  ]);
+  if (!reference) return { reference: null, recordings: [], taxa: [], descriptions: [] };
+
+  const recIds = [...new Set(recLinks.map(l => String(l.subject_id)))];
+  const descIds = [...new Set(descLinks.map(l => String(l.subject_id)))];
+  const [recordings, descRows, taxonById, descTaxa] = await Promise.all([
+    _rowsByIds(ab().recordings, recIds).then(excludeTypes),
+    _rowsByIds(ab().descriptions, descIds),
+    _taxaById(),
+    _descriptionTaxa(descIds),
+  ]);
+  const taxa = [...new Set(taxLinks.map(l => String(l.object_id)))]
+    .map(tid => taxonById.get(tid)).filter(Boolean);
+  return {
+    reference,
+    recordings: recordings.sort(_byId),
+    taxa,
+    descriptions: descRows.map(d => ({ ...d, taxon: descTaxa.get(String(d.id)) ?? null })).sort(_byId),
+  };
+}
+
+/**
+ * The descriptions of a taxon itself (not of the taxa under it), each with the publications
+ * it cites.
+ * @param {string|number} taxonId  taxon ID within the source
+ * @returns {Promise<object[]>}
+ */
+export async function fetchTaxonDescriptions(taxonId) {
+  const links = await _fetchAll(ab().links, {
+    subject_type: 'descriptions', subject_source: config.source,
+    object_type: 'taxa', object_source: config.source, object_id: String(taxonId), predicate: ABOUT,
+  });
+  const ids = [...new Set(links.map(l => String(l.subject_id)))];
+  if (!ids.length) return [];
+  const [rows, sources] = await Promise.all([_rowsByIds(ab().descriptions, ids), _descriptionSources(ids)]);
+  return rows
+    .map(d => ({ ...d, references: sources.get(String(d.id)) ?? [] }))
+    .sort(_byId);
+}
+
+let _literaturePromise = null;
+
+// Every publication of the source, with the taxa it is about: what a taxon's Literature
+// tab searches. Loaded once, when first asked for.
+function _literatureIndex() {
+  if (!_literaturePromise) {
+    _literaturePromise = Promise.all([
+      _fetchAll(ab().references),
+      _fetchAll(ab().links, {
+        subject_type: 'references', subject_source: config.source,
+        object_type: 'taxa', object_source: config.source, predicate: ABOUT,
+      }),
+      _taxaById(),
+    ]).then(([refs, links, byId]) => {
+      const taxaOf = new Map();
+      for (const l of links) {
+        const t = byId.get(String(l.object_id));
+        if (!t) continue;
+        const k = String(l.subject_id);
+        if (!taxaOf.has(k)) taxaOf.set(k, []);
+        taxaOf.get(k).push(t);
+      }
+      return { refs, taxaOf };
+    }).catch(err => { _literaturePromise = null; throw err; });
+  }
+  return _literaturePromise;
+}
+
+/**
+ * The publications about a taxon, by the rank params its view uses (as the specimens are): a
+ * publication is about the taxon when one taxon it is about has the value in that field, so
+ * { family: 'X' } takes every publication about a taxon in X. Most recent first.
+ * @param {object} rankParams  e.g. { genus: 'Gryllus' }, or { taxon: 'Gryllus campestris' }
+ * @returns {Promise<object[]>}
+ */
+export async function fetchTaxonLiterature(rankParams) {
+  const [field, value] = Object.entries(rankParams ?? {})[0] ?? ['taxon', ''];
+  const want = String(value).toLowerCase();
+  if (!want) return [];
+  const { refs, taxaOf } = await _literatureIndex();
+  return refs
+    .filter(r => (taxaOf.get(String(r.id)) ?? []).some(t => String(t[field] ?? '').toLowerCase() === want))
+    .sort(_byYear);
+}
+

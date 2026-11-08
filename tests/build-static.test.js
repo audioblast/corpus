@@ -220,6 +220,108 @@ test('the site address is required', async t => {
   assert.match(stderr, /--site is required/);
 });
 
+// Publications: publication 40 cites recording 7, is about taxon 2, and is cited by
+// description 41 of taxon 2.
+const REFERENCES = [
+  { source: SOURCE, id: 40, type: 'article', title: 'Calling songs of field crickets', author: 'Ragge, D. R.',
+    year: '1990', journal: 'Bulletin', volume: '59', number: '1', pages: '1-35', doi: '10.0000/fixture.40',
+    url: 'https://example.test/40', attachments: 'https://files.example/40.pdf', abstract: 'A test abstract.',
+    type_name: 'Journal Article' },
+];
+const DESCRIPTIONS = [
+  { source: SOURCE, id: 41, topic: 'behaviour', value: 'Males call from grass.' },
+];
+const PUBLICATION_LINKS = [
+  { source: SOURCE, subject_type: 'recordings', subject_source: SOURCE, subject_id: '7',
+    predicate: 'http://purl.org/dc/terms/isReferencedBy', object_type: 'references', object_source: SOURCE, object_id: '40' },
+  { source: SOURCE, subject_type: 'references', subject_source: SOURCE, subject_id: '40',
+    predicate: 'http://purl.obolibrary.org/obo/IAO_0000136', object_type: 'taxa', object_source: SOURCE, object_id: '2' },
+  { source: SOURCE, subject_type: 'descriptions', subject_source: SOURCE, subject_id: '41',
+    predicate: 'http://purl.obolibrary.org/obo/IAO_0000136', object_type: 'taxa', object_source: SOURCE, object_id: '2' },
+  { source: SOURCE, subject_type: 'descriptions', subject_source: SOURCE, subject_id: '41',
+    predicate: 'http://purl.org/dc/terms/source', object_type: 'references', object_source: SOURCE, object_id: '40' },
+];
+
+test('a publication has a page, which the recording, the taxon and the description link to', async t => {
+  const api = await fakeApi({ taxa: TAXA, recordings: RECORDINGS, references: REFERENCES,
+    descriptions: DESCRIPTIONS, links: PUBLICATION_LINKS });
+  t.after(() => api.close());
+  const { out, code, stderr } = await build(['--site', 'https://example.test'], api);
+  t.after(() => fs.rm(out, { recursive: true, force: true }));
+  assert.equal(code, 0, stderr);
+
+  const page = rel => fs.readFile(path.join(out, rel, 'index.html'), 'utf8');
+
+  const publication = await page('p/40');
+  assert.match(publication, /<title>Calling songs of field crickets — Test<\/title>/);
+  assert.match(publication, /<p>Ragge, D\. R\. \(1990\)\. Calling songs of field crickets\. Bulletin, 59\(1\): 1-35\.<\/p>/);
+  assert.match(publication, /href="https:\/\/doi\.org\/10\.0000\/fixture\.40"/);
+  assert.match(publication, /<a href="\/r\/7\/">Song<\/a>/, 'the recording that cites it');
+  assert.match(publication, /<a href="\/t\/2\/"><i>Gryllus campestris<\/i><\/a>/, 'the taxon it is about');
+  assert.match(publication, /<td>Behaviour<\/td>/, 'the description that cites it');
+
+  const recording = await page('r/7');
+  assert.match(recording, /<h3 class="detail-section-heading">Publications<\/h3>/);
+  assert.match(recording, /<a href="\/p\/40\/">Ragge, D\. R\. \(1990\)\./);
+
+  const taxon = await page('t/2');
+  assert.match(taxon, /<h3 class="detail-section-heading">Literature<\/h3>/);
+  assert.match(taxon, /<a href="\/p\/40\/">Ragge, D\. R\. \(1990\)\./);
+  assert.match(taxon, /<h3 class="detail-section-heading">Behaviour<\/h3>/);
+  assert.match(taxon, /<p>Males call from grass\.<\/p>/);
+  assert.match(taxon, /Source: <a href="\/p\/40\/">Ragge, D\. R\. \(1990\)\./);
+
+  const sitemap = await fs.readFile(path.join(out, 'sitemap.xml'), 'utf8');
+  assert.match(sitemap, /<loc>https:\/\/example\.test\/p\/40\/<\/loc>/);
+});
+
+// A taxon that a description or publication is about has a page, even with no recordings, and so
+// does each taxon above it, for its breadcrumb.
+test('a taxon with a description but no recordings has a page, and so does the taxon above it', async t => {
+  const taxa = [
+    ...TAXA,
+    { id: 3, taxon: 'Gryllus pennsylvanicus', rank: 'species', parent_id: 1 },
+    { id: 4, taxon: 'Acheta', rank: 'genus', parent_id: null },
+    { id: 5, taxon: 'Acheta domesticus', rank: 'species', parent_id: 4 },
+  ];
+  const descriptions = [
+    ...DESCRIPTIONS,
+    { source: SOURCE, id: 42, topic: 'behaviour', value: 'Males call at dusk.' },
+    { source: SOURCE, id: 43, topic: 'behaviour', value: 'Males call at night.' },
+  ];
+  const about = (id, taxonId) => ({ source: SOURCE, subject_type: 'descriptions', subject_source: SOURCE, subject_id: id,
+    predicate: 'http://purl.obolibrary.org/obo/IAO_0000136', object_type: 'taxa', object_source: SOURCE, object_id: taxonId });
+  const links = [...PUBLICATION_LINKS, about('42', '3'), about('43', '5')];
+  const api = await fakeApi({ taxa, recordings: RECORDINGS, references: REFERENCES, descriptions, links });
+  t.after(() => api.close());
+  const { out, code, stderr } = await build(['--site', 'https://example.test'], api);
+  t.after(() => fs.rm(out, { recursive: true, force: true }));
+  assert.equal(code, 0, stderr);
+
+  assert.ok(await exists(path.join(out, 't', '3', 'index.html')), 'a species with a description and no recordings');
+  assert.ok(await exists(path.join(out, 't', '5', 'index.html')), 'a species with a description and no recordings');
+  assert.ok(await exists(path.join(out, 't', '4', 'index.html')), 'the genus above it, with no recording of its own');
+  const page = await fs.readFile(path.join(out, 't', '5', 'index.html'), 'utf8');
+  assert.match(page, /<p>Males call at night\.<\/p>/);
+});
+
+test('a site with features.publications off writes no publication pages or lists', async t => {
+  const api = await fakeApi({ taxa: TAXA, recordings: RECORDINGS, references: REFERENCES,
+    descriptions: DESCRIPTIONS, links: PUBLICATION_LINKS });
+  t.after(() => api.close());
+  const { site, config } = await siteWithFeatures({ publications: false });
+  t.after(() => fs.rm(site, { recursive: true, force: true }));
+  const { out, code, stderr } = await build(['--site', 'https://example.test'], api, { site, config });
+  t.after(() => fs.rm(out, { recursive: true, force: true }));
+  assert.equal(code, 0, stderr);
+
+  assert.equal(await exists(path.join(out, 'p')), false);
+  const recording = await fs.readFile(path.join(out, 'r', '7', 'index.html'), 'utf8');
+  assert.doesNotMatch(recording, /Publications/);
+  const taxon = await fs.readFile(path.join(out, 't', '2', 'index.html'), 'utf8');
+  assert.doesNotMatch(taxon, /Literature|Behaviour/);
+});
+
 // Specimens: 11 is of recording 7 and identified as Gryllus campestris (2), and 12 is of
 // no recording and identified as no taxon.
 const SPECIMENS = [

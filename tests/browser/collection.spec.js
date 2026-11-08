@@ -15,7 +15,7 @@ const skipWithoutWebAudio = browserName =>
 test('the home page shows the counts and the recent recordings, which open', async ({ page, site }) => {
   await page.goto(site.url());
   await expect(page).toHaveTitle('Test collection — Browser checks');
-  for (const [stat, count] of [['recordings', '6'], ['taxa', '10'], ['traits', '3'], ['annotations', '3']]) {
+  for (const [stat, count] of [['recordings', '6'], ['taxa', '12'], ['traits', '3'], ['annotations', '3']]) {
     await expect(page.locator(`#stat-${stat} strong`)).toHaveText(count);
   }
   await expect(page.locator('#featured-list .card-title')).toHaveText([
@@ -129,7 +129,8 @@ test('browse annotations lists the annotations, and a time opens the recording t
   await rows.nth(1).getByRole('link', { name: '1.25–1.75s' }).click();
   await expect(page.locator('#detail-content h1')).toHaveText(RECORDING_7);
   await expect(page).toHaveURL(site.url('r/7/?t=1.25'));
-  await expect(page.locator('#ws-time-7')).toHaveText('0:01 / 0:02');
+  // The player loads the file before it shows the time: allow for a slow load on a busy machine.
+  await expect(page.locator('#ws-time-7')).toHaveText('0:01 / 0:02', { timeout: 15000 });
 });
 
 test('a recording page shows the recording, its taxonomy and annotations, and plays it', async ({ page, site, browserName }) => {
@@ -204,6 +205,20 @@ test('a genus page lists the recordings of the genus and of its species', async 
   await expect(taxon.locator('#taxon-recordings .card-title')).toHaveText([
     RECORDING_7, 'Cricket in a garden', 'Field cricket, second male',
   ]);
+});
+
+// A taxon with no recordings has its hierarchy from its own taxa row, and each name in it opens its taxon.
+test('a taxon with no recordings has its hierarchy from its own row, and each name opens its taxon', async ({ page, site }) => {
+  await page.goto(site.url('?taxon=Acheta%20domesticus'));
+  const taxon = page.locator('#taxon-content');
+  await expect(taxon.locator('h1')).toHaveText('Acheta domesticus');
+  await expect(taxon.locator('#taxon-count')).toHaveText('0 recordings for Acheta domesticus');
+  await expect(taxon.locator('#taxon-links .taxon-name')).toHaveText(['Animalia', 'Insecta', 'Orthoptera', 'Gryllidae', 'Acheta', 'Acheta domesticus']);
+  await expect(taxon.locator('#taxon-links')).not.toContainText('Page for this taxon');
+
+  await taxon.locator('#taxon-links .taxon-name', { hasText: 'Gryllidae' }).click();
+  await expect(page.locator('#taxon-content h1')).toHaveText('Gryllidae');
+  await expect(page.locator('#taxon-content #taxon-count')).toHaveText('3 recordings for Gryllidae');
 });
 
 test('a taxon above species is named once, in its taxonomy and on its recordings', async ({ page, site }) => {

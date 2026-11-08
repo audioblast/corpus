@@ -7,10 +7,13 @@ import http from 'node:http';
 
 const NOT_FILTERS = new Set(['source', 'page', 'page_size', 'output']);
 
-export async function fakeApi({ taxa = [], recordings = [], specimens = [], links = [] }) {
+export async function fakeApi({
+  taxa = [], recordings = [], specimens = [], links = [], references = [], descriptions = [],
+}) {
   const sources = new Set();
   const modules = {
     '/data/taxa/': taxa, '/data/recordings/': recordings, '/data/specimens/': specimens, '/data/links/': links,
+    '/data/references/': references, '/data/descriptions/': descriptions,
   };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');

@@ -71,6 +71,7 @@ const PARTS = {
   annotations: ['<button data-page="annotations">', '<div id="page-annotations" class="page">', 'id="stat-annotations"'],
   map:         ['<button data-page="map">', '<div id="page-map" class="page">'],
   specimens:   ['<div id="page-specimen" class="page">', 'id="specimen-back"', '<button data-page="specimens">', '<div id="page-specimens" class="page">'],
+  publications: ['<div id="page-publication" class="page">', 'id="publication-back"'],
 };
 
 // A page with sections left out has no gaps where they were: no line of spaces alone,
@@ -182,7 +183,7 @@ test('a site can leave out Browse traits and Browse annotations, and their count
 
 test('a feature the core does not have, or one set to neither true nor false, fails clearly', async t => {
   for (const [features, message] of [
-    [{ maps: false }, /sets features\.maps, but the features are browse, traits, annotations, map, specimens/],
+    [{ maps: false }, /sets features\.maps, but the features are browse, traits, annotations, map, specimens, publications/],
     [{ map: 'no' }, /sets features\.map to "no", not true or false/],
   ]) {
     const { code, stderr } = await run(BUILDER, ['--site-dir', await siteWith(t, features)]);

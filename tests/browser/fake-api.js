@@ -12,6 +12,8 @@ const MATCH = {
   recordings: { id: 'list', name: 'fulltext', taxon: 'fulltext', author: 'fulltext', filename: 'contains' },
   annomate:   { annotator: 'contains', annotation_date: 'contains', taxon: 'contains', type: 'contains' },
   specimens:  { id: 'list', scientificName: 'contains', recordedBy: 'contains', decimalLatitude: 'range', decimalLongitude: 'range' },
+  references: { id: 'list', title: 'contains', author: 'contains', year: 'range' },
+  descriptions: { id: 'list', value: 'contains' },
 };
 
 // Parameters that page or shape the answer rather than filter it. `source` is
@@ -66,6 +68,8 @@ export function fakeApi(data) {
     annomate:   data.annotations,
     specimens:  data.specimens,
     links:      data.links,
+    references: data.references ?? [],
+    descriptions: data.descriptions ?? [],
     // /data/traitstaxa/: each trait with its taxon's hierarchy, under the names
     // that module gives its fields
     traitstaxa: data.traits.map(t => {
