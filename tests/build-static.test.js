@@ -219,3 +219,99 @@ test('the site address is required', async t => {
   assert.notEqual(code, 0);
   assert.match(stderr, /--site is required/);
 });
+
+// Specimens: 11 is of recording 7 and identified as Gryllus campestris (2), and 12 is of
+// no recording and identified as no taxon.
+const SPECIMENS = [
+  { source: SOURCE, id: 11, scientificName: 'Gryllus campestris', institutionCode: 'NHMUK', collectionCode: 'BMNH(E)',
+    catalogNumber: '15?', basisOfRecord: 'LivingSpecimen', sex: 'Male', recordedBy: 'D. Ragge', eventDate: '1962-08-18',
+    countryCode: 'GB', decimalLatitude: '50.6016536', decimalLongitude: '-1.9529057', occurrenceRemarks: 'On reeds.' },
+  { source: SOURCE, id: 12, scientificName: 'Gryllus', countryCode: 'FR' },
+];
+const LINKS = [
+  { source: SOURCE, subject_type: 'recordings', subject_source: SOURCE, subject_id: '7',
+    predicate: 'http://rs.tdwg.org/ac/terms/associatedSpecimenReference',
+    object_type: 'specimens', object_source: SOURCE, object_id: '11' },
+  { source: SOURCE, subject_type: 'specimens', subject_source: SOURCE, subject_id: '11',
+    predicate: 'http://rs.tdwg.org/dwc/iri/toTaxon', object_type: 'taxa', object_source: SOURCE, object_id: '2' },
+];
+
+// A copy of the fixture site whose config sets `features`, as a site's config does.
+async function siteWithFeatures(features) {
+  const site = await fs.mkdtemp(path.join(os.tmpdir(), 'corpus-site-'));
+  await fs.mkdir(path.join(site, 'config'));
+  const file = path.join(site, 'config', 'site.js');
+  await fs.writeFile(file, `import fixture from ${JSON.stringify(pathToFileURL(CONFIG).href)};\n`
+    + `export default { ...fixture, features: ${JSON.stringify(features)} };\n`);
+  return { site, config: file };
+}
+
+test('a specimen has a page, which the recording and the taxon it is of link to', async t => {
+  const api = await fakeApi({ taxa: TAXA, recordings: RECORDINGS, specimens: SPECIMENS, links: LINKS });
+  t.after(() => api.close());
+  const { out, code, stderr } = await build(['--site', 'https://example.test'], api);
+  t.after(() => fs.rm(out, { recursive: true, force: true }));
+  assert.equal(code, 0, stderr);
+
+  const page = rel => fs.readFile(path.join(out, rel, 'index.html'), 'utf8');
+
+  const specimen = await page('s/11');
+  assert.match(specimen, /<title>Gryllus campestris #11 — Test<\/title>/);
+  assert.match(specimen, /<h1 class="detail-title"><i>Gryllus campestris<\/i><\/h1>/, 'the name, italic at its rank');
+  assert.match(specimen, /<td>Identified as<\/td><td><a href="\/t\/2\/"><i>Gryllus campestris<\/i><\/a><\/td>/);
+  assert.match(specimen, /<td>Collection<\/td><td>BMNH\(E\)<\/td>/);
+  assert.match(specimen, /<td>Remarks<\/td><td>On reeds\.<\/td>/);
+  assert.match(specimen, /<a href="\/r\/7\/">Song<\/a>/, 'the recording it is of');
+  assert.match(specimen, /taxon-breadcrumb"><a href="\/t\/1\/"><i>Gryllus<\/i><\/a> › <i>Gryllus campestris<\/i>/);
+  assert.match(specimen, /"@type":"Thing"/);
+
+  const recording = await page('r/7');
+  assert.match(recording, /<h3 class="detail-section-heading">Specimens<\/h3>/);
+  assert.match(recording, /<a href="\/s\/11\/">/, 'the recording links to its specimen');
+
+  const taxon = await page('t/2');
+  assert.match(taxon, /<h3 class="detail-section-heading">Specimens<\/h3>/);
+  assert.match(taxon, /<a href="\/s\/11\/">/, 'the taxon links to its specimen');
+  assert.match(taxon, /1 specimen/);
+
+  assert.match(await page('t/1'), /<a href="\/s\/11\/">/, 'a taxon lists the specimens of the taxa under it');
+
+  const plain = await page('s/12');
+  assert.match(plain, /<title>Gryllus #12 — Test<\/title>/);
+  assert.doesNotMatch(plain, /taxon-breadcrumb/, 'no taxonomy for a specimen identified as no taxon');
+
+  const sitemap = await fs.readFile(path.join(out, 'sitemap.xml'), 'utf8');
+  assert.match(sitemap, /<loc>https:\/\/example\.test\/s\/11\/<\/loc>/);
+  assert.match(sitemap, /<loc>https:\/\/example\.test\/s\/12\/<\/loc>/);
+
+  assert.deepEqual([...api.sources], [SOURCE], 'every request is scoped to the configured source');
+});
+
+test('an old address of a specimen goes to its page', async t => {
+  const api = await fakeApi({ taxa: TAXA, recordings: RECORDINGS, specimens: SPECIMENS, links: LINKS });
+  t.after(() => api.close());
+  const { site, config } = await siteWithRedirects({ 'node/11': 's/11/' });
+  t.after(() => fs.rm(site, { recursive: true, force: true }));
+  const { out, code, stderr } = await build(['--site', 'https://example.test'], api, { site, config });
+  t.after(() => fs.rm(out, { recursive: true, force: true }));
+  assert.equal(code, 0, stderr);
+
+  const moved = await fs.readFile(path.join(out, 'node', '11', 'index.html'), 'utf8');
+  assert.match(moved, /<meta http-equiv="refresh" content="0; url=\/s\/11\/">/);
+});
+
+test('a site with features.specimens off writes no specimen pages or lists', async t => {
+  const api = await fakeApi({ taxa: TAXA, recordings: RECORDINGS, specimens: SPECIMENS, links: LINKS });
+  t.after(() => api.close());
+  const { site, config } = await siteWithFeatures({ specimens: false });
+  t.after(() => fs.rm(site, { recursive: true, force: true }));
+  const { out, code, stderr } = await build(['--site', 'https://example.test'], api, { site, config });
+  t.after(() => fs.rm(out, { recursive: true, force: true }));
+  assert.equal(code, 0, stderr);
+
+  assert.equal(await exists(path.join(out, 's')), false);
+  const recording = await fs.readFile(path.join(out, 'r', '7', 'index.html'), 'utf8');
+  assert.doesNotMatch(recording, /Specimens/);
+  const sitemap = await fs.readFile(path.join(out, 'sitemap.xml'), 'utf8');
+  assert.doesNotMatch(sitemap, /\/s\//);
+});

@@ -617,3 +617,167 @@ async function _buildSpecimenMap() {
   return { points, recordingCount, unplacedCount: linked.size - ids.length };
 }
 
+// ── Specimens ─────────────────────────────────────────────────────
+// A specimen is identified as a taxon (TO_TAXON), and a recording is of the specimens it
+// is linked to (ASSOCIATED_SPECIMEN). A specimen's page, a recording's list of its
+// specimens and a taxon's Specimens tab are read from those links. The build reads them
+// too (tools/build-static.mjs).
+
+const TO_TAXON = 'http://rs.tdwg.org/dwc/iri/toTaxon';
+
+// Rows are fetched by id, this many to a request.
+const SPECIMEN_IDS_PER_REQUEST = 100;
+
+const _byId = (a, b) => Number(a.id) - Number(b.id);
+
+// The rows of a module for some ids, by its `id` filter.
+async function _rowsByIds(fn, ids) {
+  const requests = [];
+  for (let i = 0; i < ids.length; i += SPECIMEN_IDS_PER_REQUEST) {
+    const chunk = ids.slice(i, i + SPECIMEN_IDS_PER_REQUEST);
+    requests.push(fn({ id: chunk.join(','), page_size: chunk.length }));
+  }
+  return (await Promise.all(requests)).flatMap(res => res.data ?? []);
+}
+
+// The taxa by id: the whole taxonomy, cached for the session.
+let _taxaByIdPromise = null;
+function _taxaById() {
+  if (!_taxaByIdPromise) {
+    _taxaByIdPromise = _fetchAll(ab().taxa)
+      .then(rows => new Map(rows.map(t => [String(t.id), t])))
+      .catch(err => { _taxaByIdPromise = null; throw err; });
+  }
+  return _taxaByIdPromise;
+}
+
+// The taxon row that each of some specimens is identified as: specimen id -> taxon row.
+async function _specimenTaxa(ids) {
+  if (!ids.length) return new Map();
+  const [links, byId] = await Promise.all([
+    _fetchAll(ab().links, {
+      subject_type: 'specimens', subject_source: config.source, subject_id: ids.join(','),
+      object_type: 'taxa', object_source: config.source, predicate: TO_TAXON,
+    }),
+    _taxaById(),
+  ]);
+  const out = new Map();
+  for (const l of links) {
+    const t = byId.get(String(l.object_id));
+    if (t && !out.has(String(l.subject_id))) out.set(String(l.subject_id), t);
+  }
+  return out;
+}
+
+// The taxa above a taxon, root first.
+function _lineage(taxon, byId) {
+  const out = [];
+  const seen = new Set([String(taxon.id)]);
+  let cur = taxon;
+  while (cur.parent_id && byId.has(String(cur.parent_id))) {
+    cur = byId.get(String(cur.parent_id));
+    if (seen.has(String(cur.id))) break;
+    seen.add(String(cur.id));
+    out.unshift(cur);
+  }
+  return out;
+}
+
+/**
+ * One specimen's row, by its id within the source, or null.
+ * @param {string|number} id
+ * @returns {Promise<object|null>}
+ */
+export async function fetchSpecimen(id) {
+  const res = await ab().specimens({ id: String(id), page_size: 1 });
+  return res.data?.[0] ?? null;
+}
+
+/**
+ * The specimens a recording is of, each with the taxon it is identified as (`taxon`,
+ * or null), in id order.
+ * @param {string|number} id  recording ID within the source
+ * @returns {Promise<object[]>}
+ */
+export async function fetchRecordingSpecimens(id) {
+  const links = await _fetchAll(ab().links, {
+    subject_type: 'recordings', subject_source: config.source, subject_id: String(id),
+    object_type: 'specimens', object_source: config.source, predicate: ASSOCIATED_SPECIMEN,
+  });
+  const ids = [...new Set(links.map(l => String(l.object_id)))];
+  const [rows, taxa] = await Promise.all([_rowsByIds(ab().specimens, ids), _specimenTaxa(ids)]);
+  return rows.map(s => ({ ...s, taxon: taxa.get(String(s.id)) ?? null })).sort(_byId);
+}
+
+/**
+ * The recordings a specimen is of, of the site's recording types, in id order.
+ * @param {string|number} id  specimen ID within the source
+ * @returns {Promise<object[]>}
+ */
+export async function fetchSpecimenRecordings(id) {
+  const links = await _fetchAll(ab().links, {
+    subject_type: 'recordings', subject_source: config.source,
+    object_type: 'specimens', object_source: config.source, object_id: String(id),
+    predicate: ASSOCIATED_SPECIMEN,
+  });
+  const ids = [...new Set(links.map(l => String(l.subject_id)))];
+  return excludeTypes(await _rowsByIds(ab().recordings, ids)).sort(_byId);
+}
+
+/**
+ * A specimen's page: the specimen, the taxon it is identified as with the taxa above it
+ * (root first), and the recordings it is of. `specimen` is null if there is no such one.
+ * @param {string|number} id
+ * @returns {Promise<{specimen: object|null, taxon: object|null, lineage: object[], recordings: object[]}>}
+ */
+export async function fetchSpecimenPage(id) {
+  const [specimen, recordings, taxa] = await Promise.all([
+    fetchSpecimen(id), fetchSpecimenRecordings(id), _specimenTaxa([String(id)]),
+  ]);
+  const taxon = taxa.get(String(id)) ?? null;
+  const byId = taxon ? await _taxaById() : new Map();
+  return { specimen, taxon, lineage: taxon ? _lineage(taxon, byId) : [], recordings };
+}
+
+let _specimenIndexPromise = null;
+
+// Every specimen of the source, with the taxon it is identified as: what a taxon's
+// Specimens tab searches. Loaded once, when first asked for.
+function _specimenIndex() {
+  if (!_specimenIndexPromise) {
+    _specimenIndexPromise = Promise.all([
+      _fetchAll(ab().specimens),
+      _fetchAll(ab().links, {
+        subject_type: 'specimens', subject_source: config.source,
+        object_type: 'taxa', object_source: config.source, predicate: TO_TAXON,
+      }),
+      _taxaById(),
+    ]).then(([specimens, links, byId]) => {
+      const taxonOf = new Map();
+      for (const l of links) {
+        const t = byId.get(String(l.object_id));
+        if (t && !taxonOf.has(String(l.subject_id))) taxonOf.set(String(l.subject_id), t);
+      }
+      return { specimens, taxonOf };
+    }).catch(err => { _specimenIndexPromise = null; throw err; });
+  }
+  return _specimenIndexPromise;
+}
+
+/**
+ * The specimens of a taxon, matched by the rank params its view uses, as the recordings
+ * are (fetchRecordingsForTaxon): a specimen is of the taxon when the taxon it is identified
+ * as has the value in that field, so { family: 'X' } takes the specimens of every taxon in X.
+ * @param {object} rankParams  e.g. { genus: 'Gryllus' }, or { taxon: 'Gryllus campestris' }
+ * @returns {Promise<object[]>}  the specimen rows, each with its `taxon` row
+ */
+export async function fetchSpecimensForTaxon(rankParams) {
+  const [field, value] = Object.entries(rankParams ?? {})[0] ?? ['taxon', ''];
+  const want = String(value).toLowerCase();
+  if (!want) return [];
+  const { specimens, taxonOf } = await _specimenIndex();
+  return specimens
+    .map(s => ({ ...s, taxon: taxonOf.get(String(s.id)) ?? null }))
+    .filter(s => s.taxon && String(s.taxon[field] ?? '').toLowerCase() === want);
+}
+

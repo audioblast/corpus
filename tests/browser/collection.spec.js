@@ -139,8 +139,9 @@ test('a recording page shows the recording, its taxonomy and annotations, and pl
   await expect(detail.locator('h1')).toHaveText(RECORDING_7);
   await expect(page).toHaveTitle(`${RECORDING_7} — Test collection`);
   await expect(detail.locator('div.detail-title')).toHaveText(CRICKET);
-  await expect(detail.locator('.detail-meta')).toHaveText('#7 · test-collection');
-  await expect(detail.locator('.detail-main > .meta-table')).toContainText('Uploaded byA. Recordist');
+  // The header's line comes first; a recording's specimens, below its metadata, are marked the same way
+  await expect(detail.locator('.detail-meta').first()).toHaveText('#7 · test-collection');
+  await expect(detail.locator('.detail-main > .meta-table').first()).toContainText('Uploaded byA. Recordist');
 
   // The taxonomy, from the taxon's row, and the taxon's own page
   await expect(detail.locator('#taxon-links .taxon-name')).toHaveText(CRICKET_LINEAGE);

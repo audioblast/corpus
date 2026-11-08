@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 
 const PREPAINT = await fs.readFile(new URL('../js/prepaint.js', import.meta.url), 'utf8');
-const PAGES = ['home', 'browse', 'traits', 'annotations', 'map', 'about', 'detail', 'taxon'];
+const PAGES = ['home', 'browse', 'traits', 'annotations', 'map', 'about', 'detail', 'taxon', 'specimen'];
 
 // The page prepaint.js shows for an address, in a page that has these pages.
 function prepaint(address, pages = PAGES) {
@@ -30,6 +30,7 @@ test('an address shows its page', () => {
   assert.equal(prepaint('/?id=7'), 'detail');
   assert.equal(prepaint('/r/7/'), 'detail');
   assert.equal(prepaint('/t/1/'), 'taxon');
+  assert.equal(prepaint('/s/7/'), 'specimen');
   assert.equal(prepaint('/?taxon=Gryllus'), 'taxon');
   for (const page of ['browse', 'traits', 'annotations', 'map', 'about']) {
     assert.equal(prepaint(`/?page=${page}`), page);

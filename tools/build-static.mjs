@@ -35,9 +35,11 @@ import { mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { esc, httpUrl, subgenusBrackets, ITALIC_RANKS } from '../js/format.js';
+import { esc, httpUrl, subgenusBrackets, nameHtml, specimenDetails, SPECIMEN_LIST_CAP } from '../js/format.js';
 
 const LIST_CAP = 100;                         // recordings listed on a taxon page
+const ASSOCIATED_SPECIMEN = 'http://rs.tdwg.org/ac/terms/associatedSpecimenReference';
+const TO_TAXON = 'http://rs.tdwg.org/dwc/iri/toTaxon';
 
 // ── Arguments ─────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -69,6 +71,10 @@ Object.assign(config, (await import(pathToFileURL(CONFIG_PATH).href)).default);
 const SOURCE = config.source;
 const SITE_NAME = config.siteName;
 
+// Whether the site has specimens: a page for each, and the lists of them on a recording's
+// and a taxon's page (features.specimens).
+const SPECIMENS = config.hasFeature('specimens');
+
 // The browse site, if the site links its taxa to one: its origin, from the address
 // its config gives for a taxon. Null if it links to none.
 const browseLink = config.browseTaxonUrl('Gryllus');
@@ -76,11 +82,6 @@ const BROWSE = browseLink ? new URL(browseLink).origin : null;
 
 // ── Helpers ───────────────────────────────────────────────────────
 const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const nameHtml = (name, rank) => {
-  const n = esc(subgenusBrackets(name));
-  return ITALIC_RANKS.has(String(rank || '').toLowerCase()) ? `<i>${n}</i>` : n;
-};
 
 const clean = s => String(s ?? '').replace(/\s+/g, ' ').trim();
 
@@ -104,10 +105,12 @@ async function getJson(url, tries = 3) {
   }
 }
 
-async function fetchAll(module) {
+// Every row of a module for the source, with any further filters, such as a link's predicate.
+async function fetchAll(module, filters = {}) {
   const rows = [];
   for (let page = 1; ; page++) {
-    const j = await getJson(`${API}/data/${module}/?source=${SOURCE}&page=${page}&page_size=5000`);
+    const query = new URLSearchParams({ source: SOURCE, ...filters, page: String(page), page_size: '5000' });
+    const j = await getJson(`${API}/data/${module}/?${query}`);
     rows.push(...(j.data ?? []));
     if (page >= (j.last_page ?? 1)) break;
   }
@@ -154,7 +157,7 @@ const APP_PAGE = (await readFile(PAGE_PATH, 'utf8')).replace(/\r\n/g, '\n');
 // checked against the page, which the pages are built from.
 const slotOf = view => `<div id="${view}-content">\n      <div class="loading"><div class="spinner"></div>Loading…</div>\n    </div>`;
 const pageOf = view => `<div id="page-${view}" class="page">`;
-for (const view of ['detail', 'taxon']) {
+for (const view of SPECIMENS ? ['detail', 'taxon', 'specimen'] : ['detail', 'taxon']) {
   for (const anchor of [slotOf(view), pageOf(view), '<meta charset="UTF-8">', '</head>']) {
     if (!APP_PAGE.includes(anchor)) throw new Error(`${PAGE_PATH} has changed: ${anchor} is not in it`);
   }
@@ -185,9 +188,22 @@ function appPage({ view, title, description, canonical, jsonld, content, taxon =
 }
 
 // ── Build ─────────────────────────────────────────────────────────
-console.log('Fetching taxa and recordings…');
-const [taxaAll, recsAll] = await Promise.all([fetchAll('taxa'), fetchAll('recordings')]);
-console.log(`  ${taxaAll.length} taxa, ${recsAll.length} recordings`);
+console.log('Fetching taxa, recordings and specimens…');
+const [taxaAll, recsAll, specimensAll, recLinks, taxonLinks] = await Promise.all([
+  fetchAll('taxa'),
+  fetchAll('recordings'),
+  SPECIMENS ? fetchAll('specimens') : [],
+  SPECIMENS ? fetchAll('links', {
+    subject_type: 'recordings', subject_source: SOURCE, object_type: 'specimens', object_source: SOURCE,
+    predicate: ASSOCIATED_SPECIMEN,
+  }) : [],
+  SPECIMENS ? fetchAll('links', {
+    subject_type: 'specimens', subject_source: SOURCE, object_type: 'taxa', object_source: SOURCE,
+    predicate: TO_TAXON,
+  }) : [],
+]);
+console.log(`  ${taxaAll.length} taxa, ${recsAll.length} recordings`
+  + (SPECIMENS ? `, ${specimensAll.length} specimens` : ''));
 if (!recsAll.length) console.warn(`  No recordings for source "${SOURCE}": writing the sitemap and robots.txt only. Check the source in the site's config.`);
 const browsePages = await browsePaths();
 
@@ -251,8 +267,73 @@ const browseHref = t => {
   return href && browsePages.has(new URL(href).pathname) ? href : '';
 };
 
+// ── Specimens: what each one is of, and what is of each one ─────────
+// A specimen has a page of its own, at s/<id>/, for each specimen of the source. It is
+// identified as a taxon (TO_TAXON), and a recording is of the specimens it is linked to
+// (ASSOCIATED_SPECIMEN). Those links give the lists of specimens on a recording's page
+// and on a taxon's, as the recordings of a taxon are listed.
+const specimenById = new Map(specimensAll.map(s => [String(s.id), s]));
+const recById      = new Map(recs.map(r => [String(r.id), r]));
+const specsOfRec   = new Map();     // recording id -> its specimens' ids
+const recsOfSpec   = new Map();     // specimen id -> its recordings' ids, those with pages
+for (const l of recLinks) {
+  const rec = String(l.subject_id), spec = String(l.object_id);
+  if (!specimenById.has(spec)) continue;
+  if (!specsOfRec.has(rec)) specsOfRec.set(rec, new Set());
+  specsOfRec.get(rec).add(spec);
+  if (recById.has(rec)) {
+    if (!recsOfSpec.has(spec)) recsOfSpec.set(spec, new Set());
+    recsOfSpec.get(spec).add(rec);
+  }
+}
+const taxonOfSpec = new Map();      // specimen id -> the taxon row it is identified as
+for (const l of taxonLinks) {
+  const spec = String(l.subject_id), t = taxonById.get(String(l.object_id));
+  if (t && specimenById.has(spec) && !taxonOfSpec.has(spec)) taxonOfSpec.set(spec, t);
+}
+// A taxon's specimens, counting up through its ancestors, as its recordings do.
+const specsByTaxon = new Map();
+for (const s of specimensAll) {
+  const t = taxonOfSpec.get(String(s.id));
+  if (!t) continue;
+  for (const a of [...ancestors(t), t]) {
+    const k = String(a.id);
+    if (!specsByTaxon.has(k)) specsByTaxon.set(k, []);
+    specsByTaxon.get(k).push(s);
+  }
+}
+
+const byId   = (a, b) => Number(a.id) - Number(b.id);
+const byName = (a, b) => (clean(a.scientificName) || '').localeCompare(clean(b.scientificName) || '') || byId(a, b);
+
+// A specimen's name: its scientific name, or else its taxon's.
+const specimenName = s => clean(s.scientificName) || clean(taxonOfSpec.get(String(s.id))?.taxon) || 'Specimen';
+
+// A specimen's collection number, or else its id.
+const specimenNumber = s => [s.institutionCode, s.collectionCode, s.catalogNumber].map(clean).filter(Boolean).join(' ')
+  || `#${s.id}`;
+
+// A specimen as a row of a list of specimens: its name, linked to its page, with its
+// number, and where and when it was collected.
+const specimenRow = s => {
+  const t = taxonOfSpec.get(String(s.id));
+  const label = `<a href="${BASE}s/${esc(s.id)}/">${nameHtml(specimenName(s), t?.rank)}</a>`
+    + ` <span class="detail-meta">${esc(specimenNumber(s))}</span>`;
+  const where = [s.countryCode, s.eventDate, s.recordedBy].map(clean).filter(Boolean).map(esc).join(' · ');
+  return `<tr><td>${label}</td><td>${where}</td></tr>`;
+};
+
+// A recording as a row of a specimen's list of recordings: its name, linked to its page,
+// and its taxon.
+const specimenRecordingRow = r => `<tr><td><a href="${BASE}r/${esc(r.id)}/">`
+  + `${esc(clean(r.name) || clean(r.taxon) || 'Untitled recording')}</a></td><td>${esc(clean(r.taxon))}</td></tr>`;
+
+// A recording's specimens, in order.
+const recordingSpecimens = id => [...(specsOfRec.get(id) ?? [])].map(sid => specimenById.get(sid)).sort(byId);
+
 await rm(path.join(OUT, 'r'), { recursive: true, force: true });
 await rm(path.join(OUT, 't'), { recursive: true, force: true });
+await rm(path.join(OUT, 's'), { recursive: true, force: true });
 
 async function write(rel, html) {
   const file = path.join(OUT, rel);
@@ -290,6 +371,8 @@ for (const r of recs) {
     ['Added',         esc(r.post_date)],
   ].filter(([, v]) => v !== '' && v != null);
 
+  const recSpecs = recordingSpecimens(id);
+
   // The detail view's markup, as js/render.js draws it, so that the page the
   // app takes over looks the same before and after its scripts run.
   const detail = [
@@ -308,6 +391,12 @@ for (const r of recs) {
     '<table class="meta-table">',
     ...rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`),
     '</table>',
+    ...(recSpecs.length ? [
+      '<h3 class="detail-section-heading">Specimens</h3>',
+      '<table class="meta-table">',
+      ...recSpecs.map(specimenRow),
+      '</table>',
+    ] : []),
     '</div></div>',
   ].filter(Boolean).join('\n      ');
 
@@ -347,6 +436,8 @@ for (const t of taxa) {
   const lineage   = ancestors(t);
   const shown     = all.slice(0, LIST_CAP);
   const browse    = browseHref(t);
+  const specs     = [...(specsByTaxon.get(id) ?? [])].sort(byName);
+  const shownSpecs = specs.slice(0, SPECIMEN_LIST_CAP);
 
   // The taxon view as js/app.js draws it: the taxon's name and rank, its
   // recordings (the first LIST_CAP, each linked to its page) and its place in
@@ -355,7 +446,8 @@ for (const t of taxa) {
     + `<td>${[fmtDuration(r.duration), clean(r.author)].filter(Boolean).map(esc).join(' · ')}</td></tr>`;
   const content = [
     `<h1 class="detail-title">${nameHtml(t.taxon, t.rank)}</h1>`,
-    `<div class="detail-meta">${[t.rank && esc(t.rank), `${all.length} recording${all.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</div>`,
+    `<div class="detail-meta">${[t.rank && esc(t.rank), `${all.length} recording${all.length === 1 ? '' : 's'}`,
+      specs.length && `${specs.length} specimen${specs.length === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</div>`,
     browse ? `<div class="detail-actions"><a class="detail-action-link" href="${esc(browse)}" target="_blank" rel="noopener">🌳 Taxon on ${esc(new URL(browse).host)}</a></div>` : '',
     '<div class="detail-grid"><div class="detail-main">',
     kids.length ? [
@@ -369,6 +461,14 @@ for (const t of taxa) {
     ...shown.map(recRow),
     '</table>',
     all.length > shown.length ? `<p class="detail-meta">The first ${shown.length} of ${all.length} recordings are listed here.</p>` : '',
+    ...(specs.length ? [
+      '<h3 class="detail-section-heading">Specimens</h3>',
+      '<table class="meta-table">',
+      ...shownSpecs.map(specimenRow),
+      '</table>',
+      specs.length > shownSpecs.length
+        ? `<p class="detail-meta">The first ${shownSpecs.length} of ${specs.length} specimens are listed here.</p>` : '',
+    ] : []),
     '</div><div class="detail-side">',
     '<div class="sidebar-card">',
     '<div class="sidebar-title">Taxonomy</div>',
@@ -392,10 +492,68 @@ for (const t of taxa) {
   await write(`t/${id}/index.html`, appPage({ view: 'taxon', title: subgenusBrackets(t.taxon), description: desc, canonical, jsonld, content, taxon: t.taxon }));
 }
 
+// ── Specimen pages ────────────────────────────────────────────────
+// A page for each specimen of the source: its details, the recordings it is of, and the
+// taxon it is identified as, with the taxa above that.
+if (SPECIMENS) for (const s of specimensAll) {
+  const id        = String(s.id);
+  const taxon     = taxonOfSpec.get(id) ?? null;
+  const name      = specimenName(s);
+  const number    = [s.institutionCode, s.collectionCode, s.catalogNumber].map(clean).filter(Boolean).join(' ');
+  const canonical = `${SITE}/s/${id}/`;
+  const lineage   = taxon ? ancestors(taxon) : [];
+  const specRecs  = [...(recsOfSpec.get(id) ?? [])].map(rid => recById.get(rid)).sort(byId);
+  const named     = clean(s.scientificName);
+  const taxonHtml = taxon ? taxonLink(taxon) : (named ? nameHtml(named) : '');
+  const title     = `${subgenusBrackets(name)} #${id}`;
+
+  // The page's view, as the app draws a specimen's: the name, the details, the recordings
+  // and the taxonomy. Without JavaScript, this is the page.
+  const content = [
+    `<h1 class="detail-title">${nameHtml(name, taxon?.rank)}</h1>`,
+    number ? `<div class="detail-title" style="font-size:1.1rem;margin-bottom:0.25rem">${esc(number)}</div>` : '',
+    `<div class="detail-meta">#${esc(id)} · ${esc(SOURCE)}</div>`,
+    `<div class="detail-actions"><a class="detail-action-link" href="https://api.audioblast.org/specimen/${esc(encodeURIComponent(SOURCE))}/${esc(encodeURIComponent(id))}" target="_blank" rel="noopener">Data record on audioBLAST</a></div>`,
+    '<div class="detail-grid"><div class="detail-main">',
+    '<h3 class="detail-section-heading">Metadata</h3>',
+    '<table class="meta-table">',
+    ...specimenDetails(s, taxonHtml).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`),
+    '</table>',
+    ...(specRecs.length ? [
+      '<h3 class="detail-section-heading">Recordings</h3>',
+      '<table class="meta-table">',
+      ...specRecs.map(specimenRecordingRow),
+      '</table>',
+    ] : []),
+    '</div><div class="detail-side">',
+    ...(taxon ? [
+      '<div class="sidebar-card">',
+      '<div class="sidebar-title">Taxonomy</div>',
+      `<div class="taxon-breadcrumb">${[...lineage.map(taxonLink), nameHtml(taxon.taxon, taxon.rank)].join(' › ')}</div>`,
+      '</div>',
+    ] : []),
+    '</div></div>',
+  ].filter(Boolean).join('\n      ');
+
+  const desc = [subgenusBrackets(name), number, clean(s.countryCode), clean(s.eventDate)].filter(Boolean).join(' · ')
+    || `Specimen from ${SITE_NAME}.`;
+  const jsonld = {
+    '@context': 'https://schema.org',
+    '@type': 'Thing',
+    name: title,
+    url: canonical,
+    ...(taxon && { about: { '@type': 'Taxon', name: taxon.taxon,
+        ...(taxon.rank && { taxonRank: taxon.rank }) } }),
+  };
+
+  await write(`s/${id}/index.html`, appPage({ view: 'specimen', title, description: desc, canonical, jsonld, content }));
+}
+
 // ── Sitemap ───────────────────────────────────────────────────────
 const urls = [`${SITE}/`,
   ...taxa.map(t => `${SITE}/t/${t.id}/`),
-  ...recs.map(r => `${SITE}/r/${r.id}/`)];
+  ...recs.map(r => `${SITE}/r/${r.id}/`),
+  ...(SPECIMENS ? specimensAll.map(s => `${SITE}/s/${s.id}/`) : [])];
 await write('sitemap.xml',
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`
   + urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n') + '\n</urlset>\n');
@@ -412,7 +570,7 @@ Sitemap: ${SITE}/sitemap.xml
 // search engines take that as a permanent move. The host sends a request for the
 // old address without its last slash on to the address with it. These come last,
 // so that an old address can't take the place of a file the build has written.
-const RESERVED = new Set(['r', 't', 'config']);
+const RESERVED = new Set(['r', 's', 't', 'config']);
 const HOME = new URL(BASE, SITE + '/');
 let movedCount = 0;
 
@@ -475,8 +633,9 @@ if (config.redirects) {
   // A recording's or taxon's page that this build didn't write isn't there to go
   // to: one of a recording type the site leaves out, or left out by a limit.
   const pathOf = rel => new URL(rel, HOME).pathname;
-  const written = new Set([...recs.map(r => pathOf(`r/${r.id}/`)), ...taxa.map(t => pathOf(`t/${t.id}/`))]);
-  const isPage = new RegExp(`^${escapeRegExp(HOME.pathname)}[rt]/[^/]+/$`);
+  const written = new Set([...recs.map(r => pathOf(`r/${r.id}/`)), ...taxa.map(t => pathOf(`t/${t.id}/`)),
+    ...(SPECIMENS ? specimensAll.map(s => pathOf(`s/${s.id}/`)) : [])]);
+  const isPage = new RegExp(`^${escapeRegExp(HOME.pathname)}[rst]/[^/]+/$`);
   const gone = [];
   async function move([from, to]) {
     const old = await oldPath(from);
@@ -499,5 +658,6 @@ if (config.redirects) {
   }
 }
 
-console.log(`Wrote ${recs.length} recording pages, ${taxa.length} taxon pages, sitemap (${urls.length} URLs)`
+console.log(`Wrote ${recs.length} recording pages, ${taxa.length} taxon pages`
+  + (SPECIMENS ? `, ${specimensAll.length} specimen pages` : '') + `, sitemap (${urls.length} URLs)`
   + (config.redirects ? `, ${movedCount} old addresses` : '') + ` to ${OUT}`);

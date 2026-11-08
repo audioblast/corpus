@@ -70,11 +70,13 @@ async function assembleSite(name) {
   const page = path.join(dir, 'index.html');
   await fs.writeFile(page, (await fs.readFile(page, 'utf8')).replace(/^\s*<link rel="preconnect"[^>]*>\n/gm, ''));
 
-  // The generator reads the site's taxa and recordings from the generator tests' fake
-  // API, served on a local port while it runs.
+  // The generator reads the site's taxa, recordings, specimens and their links from the
+  // generator tests' fake API, served on a local port while it runs.
   const data = (await import(`./data/${name}.js`)).default;
   const origin = `https://${name}.test`;
-  const api = await serveApi({ taxa: data.taxa, recordings: data.recordings });
+  const api = await serveApi({
+    taxa: data.taxa, recordings: data.recordings, specimens: data.specimens, links: data.links,
+  });
   try {
     await runTool('build-static.mjs', [
       '--config', path.join(dir, 'config', 'site.js'), '--page', page,

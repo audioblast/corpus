@@ -31,6 +31,9 @@ import {
   fetchRecordingsForTaxon,
   fetchTraitsForTaxon,
   fetchAutocomplete,
+  fetchSpecimenPage,
+  fetchRecordingSpecimens,
+  fetchSpecimensForTaxon,
 } from './api.js';
 
 import {
@@ -44,7 +47,7 @@ import {
 
 import { isOwnLevel } from './format.js';
 
-import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
+import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, renderDetailSpecimens, renderSpecimen, renderTaxonSpecimens, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
 
 // Must match the page size actually used for recording queries — the
 // audioBlast default of 250, which api.js also pages its cached rows at.
@@ -59,7 +62,7 @@ const BULK_CONCURRENCY = 6;
 // Nav tokens — each navigation increments the counter for the section it
 // targets. Async slot-in handlers capture the token at start and drop their
 // results if the counter has moved on (= user navigated again).
-const navTokens = { detail: 0, taxon: 0, search: 0 };
+const navTokens = { detail: 0, taxon: 0, search: 0, specimen: 0 };
 
 async function _runWithLimit(tasks, limit) {
   const results = new Array(tasks.length);
@@ -113,6 +116,7 @@ const els = {
   browseList:          $('browse-list'),
   detailContent:       $('detail-content'),
   taxonContent:        $('taxon-content'),
+  specimenContent:     $('specimen-content'),
   traitsTaxonInput:    $('traits-taxon'),
   traitsTraitInput:    $('traits-trait'),
   traitsValueInput:    $('traits-value'),
@@ -159,6 +163,7 @@ function _pageIdFromPath(kind) {
 }
 const recordingIdFromPath = () => _pageIdFromPath('r');
 const taxonIdFromPath = () => _pageIdFromPath('t');
+const specimenIdFromPath = () => _pageIdFromPath('s');
 
 // The taxon that a taxon's own page is for, found by the id in its address. The
 // build writes the name on the page too, for when the taxa cannot be loaded.
@@ -189,9 +194,10 @@ function applyPage(name) {
     // Invalidate any in-flight detail load — its slot-in handlers will no-op.
     navTokens.detail++;
   }
-  // The views for a recording and for a taxon set their own titles.
-  if (name !== 'detail' && name !== 'taxon') document.title = siteTitle();
+  // The views for a recording, a taxon and a specimen set their own titles.
+  if (name !== 'detail' && name !== 'taxon' && name !== 'specimen') document.title = siteTitle();
   if (name !== 'taxon') navTokens.taxon++;
+  if (name !== 'specimen') navTokens.specimen++;
   if (name !== 'home')  navTokens.search++;
   els.pages.forEach(p => p.classList.toggle('active', p.id === `page-${name}`));
   els.navBtns.forEach(b => {
@@ -382,6 +388,13 @@ async function _showDetail(id, fallback = null, seekTime = null) {
     })
     .catch(() => {});
 
+  // The specimens the recording is of, under its metadata, when the site has them.
+  if (config.hasFeature('specimens')) {
+    fetchRecordingSpecimens(id)
+      .then(specimens => { if (isCurrent()) renderDetailSpecimens(els.detailContent, specimens); })
+      .catch(() => {});
+  }
+
   const isSoundscape = config.soundscapeTypes?.some(
     t => t.toLowerCase() === (rec.recording_type || '').toLowerCase()
   );
@@ -438,7 +451,37 @@ async function loadDetailById(id, t) {
 }
 
 // ── Taxon page ───────────────────────────────────────────────────
-const _LOADING_INLINE = `<div class="loading" role="status" aria-live="polite" style="padding:0.5rem 0;font-size:12px"><div class="spinner" aria-hidden="true"></div>Loading…</div>`;
+// ── Specimen page ────────────────────────────────────────────────
+// A specimen's page is its own address (tools/build-static.mjs writes one for each).
+
+function loadSpecimenById(id) {
+  applyPage('specimen');
+  _showSpecimen(id);
+}
+
+async function _showSpecimen(id) {
+  const token = ++navTokens.specimen;
+  const isCurrent = () => navTokens.specimen === token;
+
+  showLoading(els.specimenContent, 'Loading specimen…');
+  try {
+    const view = await fetchSpecimenPage(id);
+    if (!isCurrent()) return;
+    if (!view.specimen) {
+      document.title = `Specimen not found — ${config.siteName}`;
+      showError(els.specimenContent, 'Specimen not found.');
+      return;
+    }
+    renderSpecimen(view, els.specimenContent, openTaxon);
+    const name = view.specimen.scientificName || view.taxon?.taxon || `Specimen ${id}`;
+    document.title = `${subgenusBrackets(name)} #${id} — ${config.siteName}`;
+  } catch (e) {
+    if (!isCurrent()) return;
+    showError(els.specimenContent, `Could not load specimen: ${e.message}`);
+  }
+}
+
+const _LOADING_INLINE =`<div class="loading" role="status" aria-live="polite" style="padding:0.5rem 0;font-size:12px"><div class="spinner" aria-hidden="true"></div>Loading…</div>`;
 
 function _renderTaxonShell(name) {
   els.taxonContent.innerHTML = `
@@ -449,6 +492,9 @@ function _renderTaxonShell(name) {
           <button class="taxon-tab active" data-tab="recordings" role="tab"
                   id="taxon-tabbtn-recordings" aria-controls="tab-recordings"
                   aria-selected="true" tabindex="0">Recordings</button>
+          <button class="taxon-tab" data-tab="specimens" role="tab"
+                  id="taxon-tabbtn-specimens" aria-controls="tab-specimens"
+                  aria-selected="false" tabindex="-1">Specimens</button>
           <button class="taxon-tab" data-tab="traits" role="tab"
                   id="taxon-tabbtn-traits" aria-controls="tab-traits"
                   aria-selected="false" tabindex="-1">Traits</button>
@@ -463,6 +509,10 @@ function _renderTaxonShell(name) {
           </div>
           <div id="taxon-recordings">${_LOADING_INLINE}</div>
           <div id="taxon-pagination" class="pagination"></div>
+        </div>
+        <div class="taxon-tab-panel" id="tab-specimens" role="tabpanel"
+             aria-labelledby="taxon-tabbtn-specimens" hidden>
+          <div id="specimens-content">${_LOADING_INLINE}</div>
         </div>
         <div class="taxon-tab-panel" id="tab-traits" role="tabpanel"
              aria-labelledby="taxon-tabbtn-traits" hidden>
@@ -482,7 +532,7 @@ function _renderTaxonShell(name) {
     </div>`;
 
   // The tabs of the features the site leaves out (config.features) go.
-  for (const tab of ['traits', 'annotations']) {
+  for (const tab of ['specimens', 'traits', 'annotations']) {
     if (config.hasFeature(tab)) continue;
     els.taxonContent.querySelector(`#taxon-tabbtn-${tab}`).remove();
     els.taxonContent.querySelector(`#tab-${tab}`).remove();
@@ -626,6 +676,13 @@ function _showTaxon(name, page = 1) {
             renderAnnotations(els.taxonContent, res.data?.length > 0 ? res.data : null, openDetail);
           })
           .catch(() => { if (isCurrent()) renderAnnotations(els.taxonContent, null); });
+      }
+
+      // The specimens of the taxon and of those under it: the Specimens tab, when the site has them.
+      if (isNewTaxon && config.hasFeature('specimens')) {
+        fetchSpecimensForTaxon(state.taxonRankParams ?? { taxon: name })
+          .then(rows => { if (isCurrent()) renderTaxonSpecimens(els.taxonContent, rows); })
+          .catch(() => { if (isCurrent()) renderTaxonSpecimens(els.taxonContent, null); });
       }
 
       if (data.length > 0) {
@@ -1159,6 +1216,14 @@ async function route() {
     return;
   }
 
+  // A specimen's page is its address, as a recording's is. A site with no specimens
+  // (config.features) has none, so its address is taken as one with no page: home.
+  const specimenId = specimenIdFromPath();
+  if (specimenId && config.hasFeature('specimens')) {
+    loadSpecimenById(specimenId);
+    return;
+  }
+
   // A taxon's page is found by the id in its address. ?taxon= takes precedence,
   // as ?id= does for a recording's page.
   const taxon = params.get('taxon') ?? await taxonNameForPage();
@@ -1358,6 +1423,7 @@ function init() {
   const back = () => (history.state?.inApp ? history.back() : goHome());
   $('detail-back').addEventListener('click', back);
   $('taxon-back').addEventListener('click', back);
+  $('specimen-back')?.addEventListener('click', back);   // a site with no specimens has no page for it
 
   // The filters of the traits and annotations pages. A feature the site leaves out
   // (config.features) has no page, so nothing to set up.

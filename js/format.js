@@ -64,3 +64,49 @@ export function isOwnLevel(taxon, taxonRank, level, name) {
   const rank = String(taxonRank ?? '').toLowerCase();
   return !rank || rank === String(level).toLowerCase();
 }
+
+// ── Specimens ─────────────────────────────────────────────────────
+
+/** How many specimens a taxon's list of them, or a recording's, shows. */
+export const SPECIMEN_LIST_CAP = 100;
+
+/**
+ * A taxon's name as HTML: italic at a rank whose names are (ITALIC_RANKS), with its
+ * subgenus in brackets. Pass no rank for a name of no known rank.
+ */
+export function nameHtml(name, rank) {
+  const n = esc(subgenusBrackets(name));
+  return ITALIC_RANKS.has(String(rank || '').toLowerCase()) ? `<i>${n}</i>` : n;
+}
+
+/**
+ * A specimen's details as the rows of its page's metadata table: [label, html] for each
+ * detail it has, with the values escaped. `taxonHtml` is the taxon it is identified as,
+ * as HTML (a link, or its name), or '' for none.
+ */
+export function specimenDetails(s, taxonHtml = '') {
+  const place = s.decimalLatitude && s.decimalLongitude ? `${s.decimalLatitude}, ${s.decimalLongitude}` : '';
+  const rows = [
+    ['Identified as',            taxonHtml],
+    ['Institution',              esc(s.institutionCode)],
+    ['Collection',               esc(s.collectionCode)],
+    ['Catalogue number',         esc(s.catalogNumber)],
+    ['Other catalogue numbers',  esc(s.otherCatalogNumbers)],
+    ['Type status',              esc(s.typeStatus)],
+    ['Basis of record',          esc(s.basisOfRecord)],
+    ['Sex',                      esc(s.sex)],
+    ['Life stage',               esc(s.lifeStage)],
+    ['Individuals',              esc(s.individualCount)],
+    ['Collected by',             esc(s.recordedBy)],
+    ['Date collected',           esc(s.eventDate)],
+    ['Identified by',            esc(s.identifiedBy)],
+    ['Date identified',          esc(s.dateIdentified)],
+    ['Identification qualifier', esc(s.identificationQualifier)],
+    ['Locality',                 esc(s.locality)],
+    ['Country',                  esc(s.countryCode)],
+    ['Coordinates',              esc(place)],
+    ['Remarks',                  esc(s.occurrenceRemarks)],
+    ['Associated sequences',     esc(s.associatedSequences)],
+  ];
+  return rows.filter(([, v]) => v !== '');
+}

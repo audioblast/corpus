@@ -13,7 +13,9 @@
 //   - traits with ontology links and ranges, and annotations with and without
 //     frequency bounds;
 //   - specimens at three places, and one without coordinates, so that one
-//     recording is not on the map.
+//     recording is not on the map;
+//   - specimens identified as taxa, and one identified as none, and one of a
+//     recording the site excludes, so that its page shows no recordings.
 
 const SOURCE = 'test-collection';
 
@@ -115,4 +117,13 @@ const links = [['7', 'S1'], ['11', 'S2'], ['8', 'S3'], ['10', 'S4'], ['9', 'S5']
   qualifier: null, remarks: null,
 }));
 
-export default { source: SOURCE, taxa, recordings, traits, annotations, specimens, links };
+// Which taxon each specimen is identified as. S5 is identified as none.
+const taxonLinks = [['S1', '6'], ['S2', '6'], ['S3', '9'], ['S4', '5']].map(([specimenId, taxonId]) => ({
+  source: SOURCE, id: `taxon-link-${specimenId}`,
+  subject_type: 'specimens', subject_source: SOURCE, subject_id: specimenId,
+  predicate: 'http://rs.tdwg.org/dwc/iri/toTaxon',
+  object_type: 'taxa', object_source: SOURCE, object_id: taxonId,
+  qualifier: null, remarks: null,
+}));
+
+export default { source: SOURCE, taxa, recordings, traits, annotations, specimens, links: [...links, ...taxonLinks] };

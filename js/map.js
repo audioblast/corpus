@@ -8,7 +8,7 @@
 import { fetchSpecimenMap } from './api.js';
 import config from './config.js';
 import { esc, showError } from './ui.js';
-import { staticPageHref, subgenusBrackets, wireRecordingLinks, UNKNOWN_TAXON } from './render.js';
+import { staticPageHref, specimenPageHref, subgenusBrackets, wireRecordingLinks, UNKNOWN_TAXON } from './render.js';
 
 // ── Loading Leaflet ───────────────────────────────────────────────
 
@@ -80,7 +80,6 @@ function _popupElement(place, onRecording) {
 }
 
 function _popupHtml(place) {
-  const names = [...new Set(place.specimens.map(s => s.scientificName).filter(Boolean))];
   const items = place.recordings.map(r => {
     const href  = staticPageHref('r', r.id, r.recording_type) || `?id=${encodeURIComponent(r.id)}`;
     const label = r.name || r.taxon || 'Untitled recording';
@@ -89,8 +88,17 @@ function _popupHtml(place) {
       : '';
     return `<li><a href="${esc(href)}" data-recording="${esc(r.id)}">${esc(label)}</a>${taxon}</li>`;
   }).join('');
-  const specimens = names.length
-    ? `<div class="map-popup-specimens">${names.length > 1 ? 'Specimens' : 'Specimen'}: ${names.map(n => `<em>${esc(n)}</em>`).join(', ')}</div>`
+  // Each specimen is named with its number, and linked to its own page where the site has
+  // specimen pages (features.specimens).
+  const linked = config.hasFeature('specimens');
+  const specimens = place.specimens.length
+    ? `<div class="map-popup-specimens">${place.specimens.length > 1 ? 'Specimens' : 'Specimen'}: `
+      + place.specimens.map(s => {
+        const label = `<em>${esc(s.scientificName || 'Specimen')}</em> #${esc(s.id)}`;
+        const href  = linked ? specimenPageHref(s.id) : '';
+        return href ? `<a href="${esc(href)}">${label}</a>` : label;
+      }).join(', ')
+      + '</div>'
     : '';
   return `
     <div class="map-popup-place">${esc(_countryName(place.country) || 'Unknown country')}<span class="map-popup-coords">${place.lat.toFixed(4)}, ${place.lon.toFixed(4)}</span></div>

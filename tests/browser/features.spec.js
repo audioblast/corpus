@@ -58,7 +58,7 @@ test.describe('without Browse taxa and the map', () => {
     await page.locator('#taxon-links .taxon-name', { hasText: CRICKET }).click();
     await expect(page.locator('#taxon-content h1')).toHaveText(CRICKET);
     await expect(page).toHaveURL(site.url('t/6/'));
-    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Traits', 'Annotations']);
+    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Specimens', 'Traits', 'Annotations']);
   });
 });
 
@@ -88,10 +88,10 @@ test.describe('without Browse traits and Browse annotations', () => {
     await expect(page.locator('#browse-list .tree-count').first()).toBeVisible();
     await expect(page.locator('#browse-list .tree-trait-count')).toHaveCount(0);
 
-    // A taxon's page has its recordings alone
+    // A taxon's page has its recordings and specimens, and no traits or annotations
     await page.goto(site.url('t/6/'));
     await expect(page.locator('#taxon-count')).toHaveText('2 recordings for Gryllus Gryllus campestris');
-    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings']);
+    await expect(page.locator('#taxon-content').getByRole('tab')).toHaveText(['Recordings', 'Specimens']);
 
     // A recording keeps its own annotations
     await page.goto(site.url('r/7/'));

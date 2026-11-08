@@ -70,6 +70,7 @@ const PARTS = {
   traits:      ['<button data-page="traits">', '<div id="page-traits" class="page">', 'id="stat-traits"'],
   annotations: ['<button data-page="annotations">', '<div id="page-annotations" class="page">', 'id="stat-annotations"'],
   map:         ['<button data-page="map">', '<div id="page-map" class="page">'],
+  specimens:   ['<div id="page-specimen" class="page">', 'id="specimen-back"'],
 };
 
 // A page with sections left out has no gaps where they were: no line of spaces alone,
@@ -149,6 +150,16 @@ test('a site can leave out Browse taxa and the map, and --check passes on its pa
   assert.equal((await run(BUILDER, ['--site-dir', dir, '--check'])).code, 0);
 });
 
+test('a site can leave out specimens, and its page has no specimen page', async t => {
+  const dir = await built(t, { specimens: false });
+  const page = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+
+  for (const part of PARTS.specimens) assert.ok(!page.includes(part), `left out: ${part}`);
+  for (const part of [...PARTS.browse, ...PARTS.traits, ...PARTS.map]) assert.ok(page.includes(part), `kept: ${part}`);
+  assertNoGaps(page);
+  assert.equal((await run(BUILDER, ['--site-dir', dir, '--check'])).code, 0);
+});
+
 test('a site can leave out Browse traits and Browse annotations, and their counts', async t => {
   const page = await fs.readFile(path.join(await built(t, { traits: false, annotations: false }), 'index.html'), 'utf8');
 
@@ -170,7 +181,7 @@ test('a site can leave out Browse traits and Browse annotations, and their count
 
 test('a feature the core does not have, or one set to neither true nor false, fails clearly', async t => {
   for (const [features, message] of [
-    [{ maps: false }, /sets features\.maps, but the features are browse, traits, annotations, map/],
+    [{ maps: false }, /sets features\.maps, but the features are browse, traits, annotations, map, specimens/],
     [{ map: 'no' }, /sets features\.map to "no", not true or false/],
   ]) {
     const { code, stderr } = await run(BUILDER, ['--site-dir', await siteWith(t, features)]);

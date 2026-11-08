@@ -17,7 +17,7 @@
  * no-op for this file.
  */
 
-import { esc, safeUrl, subgenusBrackets, ITALIC_RANKS, isOwnLevel } from './format.js';
+import { esc, safeUrl, subgenusBrackets, ITALIC_RANKS, isOwnLevel, nameHtml, specimenDetails, SPECIMEN_LIST_CAP } from './format.js';
 import { showEmpty, ICON_PLAY, ICON_PAUSE } from './ui.js';
 import { togglePlay } from './player.js';
 import config from './config.js';
@@ -1560,6 +1560,7 @@ export function renderDetail(recording, container, onTaxonSearch) {
         <div id="detail-birdnet-block"></div>
         <h3 class="detail-section-heading">Metadata</h3>
         <table class="meta-table">${metaRows}</table>
+        <div id="detail-specimens-block"></div>
       </div>
 
       <div class="detail-side">
@@ -1641,6 +1642,121 @@ export function renderTaxonomy(container, taxa, onTaxonSearch) {
       el.addEventListener('click', () => onTaxonSearch(el.dataset.taxon));
     });
   }
+}
+
+// ── Specimens ─────────────────────────────────────────────────────
+// A specimen's page, a recording's list of its specimens and a taxon's Specimens tab. The
+// rows and the markup are those tools/build-static.mjs writes, so the app's pages look as
+// the static ones do.
+
+const byNumber = (a, b) => Number(a.id) - Number(b.id);
+
+// The address of a specimen's own page, from the site root. '' for an id that can't be in
+// an address.
+export function specimenPageHref(id) {
+  return /^[A-Za-z0-9_-]+$/.test(String(id ?? '')) ? `s/${id}/` : '';
+}
+
+// A specimen as a row of a list: its name, linked to its page, with its collection
+// number, and where and when it was collected.
+function specimenRowHtml(s) {
+  const name   = s.scientificName || s.taxon?.taxon || 'Specimen';
+  const number = [s.institutionCode, s.collectionCode, s.catalogNumber].filter(Boolean).join(' ') || `#${s.id}`;
+  const where  = [s.countryCode, s.eventDate, s.recordedBy].filter(Boolean).map(esc).join(' · ');
+  return `<tr><td><a href="${esc(specimenPageHref(s.id))}">${nameHtml(name, s.taxon?.rank)}`
+    + ` <span class="detail-meta">${esc(number)}</span></a></td><td>${where}</td></tr>`;
+}
+
+// A recording as a row of a specimen's list of recordings: its name, linked to its page,
+// and its taxon.
+function recordingRowHtml(r) {
+  return `<tr><td><a href="${esc(staticPageHref('r', r.id, r.recording_type))}">`
+    + `${esc(r.name || r.taxon || 'Untitled recording')}</a></td><td>${esc(r.taxon || '')}</td></tr>`;
+}
+
+/**
+ * The specimens a recording is of, under its metadata in the detail view. Nothing for none.
+ * @param {HTMLElement} container  the container passed to renderDetail
+ * @param {object[]|null} specimens  fetchRecordingSpecimens' rows, or null on failure
+ */
+export function renderDetailSpecimens(container, specimens) {
+  const block = container.querySelector('#detail-specimens-block');
+  if (!block) return;
+  block.innerHTML = specimens?.length
+    ? `<h3 class="detail-section-heading">Specimens</h3>`
+      + `<table class="meta-table">${specimens.map(specimenRowHtml).join('')}</table>`
+    : '';
+}
+
+/**
+ * A specimen's page in the app: its name and collection number, its details, the
+ * recordings it is of, and the taxon it is identified as with the taxa above that.
+ * @param {{specimen: object, taxon: object|null, lineage: object[], recordings: object[]}} view
+ *   fetchSpecimenPage's result, for a specimen that exists
+ * @param {HTMLElement} container
+ * @param {Function} onTaxon  called with a taxon's name when its name is clicked
+ */
+export function renderSpecimen({ specimen: s, taxon, lineage, recordings }, container, onTaxon) {
+  const name      = s.scientificName || taxon?.taxon || '';
+  const catalogue = [s.institutionCode, s.collectionCode, s.catalogNumber].filter(Boolean).join(' ');
+  const taxonLink = t => `<span class="taxon-name" data-taxon="${esc(t.taxon)}">${nameHtml(t.taxon, t.rank)}</span>`;
+  const taxonHtml = taxon ? taxonLink(taxon) : (name ? nameHtml(name) : '');
+  const record    = `https://api.audioblast.org/specimen/${encodeURIComponent(s.source || config.source)}/${encodeURIComponent(s.id)}`;
+
+  container.innerHTML = `
+    <h1 class="detail-title">${name ? nameHtml(name, taxon?.rank) : esc(`Specimen ${s.id}`)}</h1>
+    ${catalogue ? `<div class="detail-title" style="font-size:1.1rem;margin-bottom:0.25rem">${esc(catalogue)}</div>` : ''}
+    <div class="detail-meta">#${esc(s.id)} · ${esc(s.source || config.source)}</div>
+
+    <div class="detail-actions">
+      <a href="${esc(record)}" target="_blank" rel="noopener" class="detail-action-link">Data record on audioBLAST</a>
+    </div>
+
+    <div class="detail-grid">
+      <div class="detail-main">
+        <h3 class="detail-section-heading">Metadata</h3>
+        <table class="meta-table">${specimenDetails(s, taxonHtml).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('')}</table>
+        ${recordings.length ? `<h3 class="detail-section-heading">Recordings</h3>`
+          + `<table class="meta-table">${recordings.map(recordingRowHtml).join('')}</table>` : ''}
+      </div>
+      <div class="detail-side">
+        ${taxon ? `<div class="sidebar-card">
+          <div class="sidebar-title">Taxonomy</div>
+          <div class="taxon-breadcrumb">${[...(lineage ?? []).map(taxonLink), nameHtml(taxon.taxon, taxon.rank)].join(' › ')}</div>
+        </div>` : ''}
+      </div>
+    </div>`;
+
+  container.querySelectorAll('.taxon-name[data-taxon]').forEach(el => {
+    el.addEventListener('click', () => onTaxon?.(el.dataset.taxon));
+  });
+}
+
+/**
+ * A taxon's Specimens tab: its specimens, and those of the taxa under it, the first
+ * SPECIMEN_LIST_CAP of them, by name.
+ * @param {HTMLElement} container  the taxon's view
+ * @param {object[]|null} specimens  fetchSpecimensForTaxon's rows, or null on failure
+ */
+export function renderTaxonSpecimens(container, specimens) {
+  const block = container.querySelector('#specimens-content');
+  if (!block) return;
+  if (!specimens) {
+    block.innerHTML = '<span style="font-size:12px;color:var(--text3)">Not available</span>';
+    return;
+  }
+  if (!specimens.length) {
+    block.innerHTML = '<p class="detail-meta">No specimens of this taxon are in the collection.</p>';
+    return;
+  }
+  const sorted = [...specimens].sort((a, b) =>
+    String(a.scientificName ?? '').localeCompare(String(b.scientificName ?? '')) || byNumber(a, b));
+  const shown = sorted.slice(0, SPECIMEN_LIST_CAP);
+  block.innerHTML = `<div class="results-header"><div class="results-count">`
+    + `<strong>${specimens.length}</strong> specimen${specimens.length === 1 ? '' : 's'}</div></div>`
+    + `<table class="meta-table">${shown.map(specimenRowHtml).join('')}</table>`
+    + (specimens.length > shown.length
+      ? `<p class="detail-meta">The first ${shown.length} of ${specimens.length} specimens are listed here.</p>` : '');
 }
 
 // ── Internal ──────────────────────────────────────────────────────
