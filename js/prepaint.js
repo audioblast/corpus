@@ -12,11 +12,11 @@
   // The named page, if the page has it. This runs before the site's config is
   // read, but a feature the site leaves out (config.features) isn't in its page,
   // so its address is taken as one with no page, as route() in app.js takes it.
-  var named = /^(browse|traits|annotations|about|map)$/.test(p.get('page'))
+  var named = /^(browse|traits|annotations|specimens|about|map)$/.test(p.get('page'))
            && document.getElementById('page-' + p.get('page')) ? p.get('page') : '';
   // In route()'s order. The traits and annotations pages are filtered by taxon,
   // so on those a taxon in the address is a filter, not a taxon to show.
-  var filtered = named === 'traits' || named === 'annotations';
+  var filtered = named === 'traits' || named === 'annotations' || named === 'specimens';
   var page = p.get('id')                        ? 'detail'
            : onRecord                           ? 'detail'
            : onTaxon && !filtered               ? 'taxon'

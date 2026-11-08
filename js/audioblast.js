@@ -289,12 +289,13 @@ export function annotations({
  * @returns {Promise<{data: object[], last_page: number, notes: object}>}
  */
 export function specimens({
-  source, id, scientificName, decimalLatitude, decimalLongitude,
+  source, id, scientificName, countryCode, basisOfRecord, recordedBy,
+  decimalLatitude, decimalLongitude,
   page = 1, page_size = 250, output = 'JSON',
 } = {}) {
   return get('/data/specimens/' + qs({
-    source, id, scientificName, decimalLatitude, decimalLongitude,
-    page, page_size, output,
+    source, id, scientificName, countryCode, basisOfRecord, recordedBy,
+    decimalLatitude, decimalLongitude, page, page_size, output,
   }));
 }
 

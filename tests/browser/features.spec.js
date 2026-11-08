@@ -29,7 +29,7 @@ test.describe('without Browse taxa and the map', () => {
   test('the page has neither, their addresses show home, and neither is loaded', async ({ page, site }) => {
     const requests = requestsFrom(page);
     await page.goto(site.url());
-    await expect(navButtons(page)).toHaveText(['Search', 'Browse traits', 'Browse annotations', 'About']);
+    await expect(navButtons(page)).toHaveText(['Search', 'Browse traits', 'Browse annotations', 'Browse specimens', 'About']);
     await expect(page.locator('.hero-actions button')).toHaveText(['Search recordings']);
     for (const [stat, count] of [['recordings', '6'], ['taxa', '10'], ['traits', '3'], ['annotations', '3']]) {
       await expect(page.locator(`#stat-${stat} strong`)).toHaveText(count);
@@ -68,7 +68,7 @@ test.describe('without Browse traits and Browse annotations', () => {
   test('the page, the tree and taxa leave them out, their addresses show home, and neither is asked for', async ({ page, site }) => {
     const requests = requestsFrom(page);
     await page.goto(site.url());
-    await expect(navButtons(page)).toHaveText(['Search', 'Browse taxa', 'Recordings map', 'About']);
+    await expect(navButtons(page)).toHaveText(['Search', 'Browse taxa', 'Browse specimens', 'Recordings map', 'About']);
     await expect(page.locator('.header-stat')).toHaveCount(2);
     await expect(page.locator('#stat-recordings strong')).toHaveText('6');
     await expect(page.locator('#stat-taxa strong')).toHaveText('10');

@@ -2,7 +2,7 @@
 // specimen's own page, the list of specimens on a recording's page, and a taxon's
 // Specimens tab, with the links between them. Each check also fails on a console error,
 // and on a request the harness's fakes don't answer (harness.js).
-import { test, expect, expectMapDrawn } from './harness.js';
+import { test, expect, expectMapDrawn, nav } from './harness.js';
 
 const RECORDING_7 = 'Field cricket calling song';
 const CRICKET = 'Gryllus (Gryllus) campestris';   // taxon 6, as the app shows it
@@ -77,4 +77,43 @@ test('a map popup names each specimen with its number, and links it to its page'
   await specimen.click();
   await expect(page.locator('#specimen-content h1')).toHaveText('Tettigonia viridissima');
   await expect(page).toHaveURL(site.url('s/S3/'));
+});
+
+test('Browse specimens lists the specimens, filters them, and opens one', async ({ page, site }) => {
+  await page.goto(site.url());
+  await nav(page, 'Browse specimens').click();
+  const rows = page.locator('#specimens-list tbody tr');
+  await expect(page.locator('#specimens-count')).toHaveText('5 specimens');
+  await expect(rows).toHaveCount(5);
+
+  // The country is an exact code; the name and the collector match part of a name
+  await page.locator('#specimens-country').fill('FR');
+  await page.locator('#specimens-search-btn').click();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Tettigonia viridissima');
+
+  await page.locator('#specimens-country').fill('');
+  await page.locator('#specimens-name').fill('gryllus');
+  await page.locator('#specimens-search-btn').click();
+  await expect(rows).toHaveCount(3);
+
+  await page.locator('#specimens-name').fill('');
+  await page.locator('#specimens-collector').fill('collector');
+  await page.locator('#specimens-search-btn').click();
+  await expect(rows).toHaveCount(5);
+
+  // A basis of record that no specimen has leaves the list empty
+  await page.locator('#specimens-collector').fill('');
+  await page.locator('#specimens-basis').fill('LivingSpecimen');
+  await page.locator('#specimens-search-btn').click();
+  await expect(page.locator('#specimens-list')).toContainText('No specimens found.');
+
+  await page.locator('#specimens-basis').fill('PreservedSpecimen');
+  await page.locator('#specimens-search-btn').click();
+  await expect(rows).toHaveCount(5);
+
+  // A row opens its specimen's page
+  await rows.first().getByRole('link').click();
+  await expect(page).toHaveURL(site.url('s/S1/'));
+  await expect(page.locator('#specimen-content h1')).toHaveText('Gryllus campestris');
 });

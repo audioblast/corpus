@@ -781,3 +781,16 @@ export async function fetchSpecimensForTaxon(rankParams) {
     .filter(s => s.taxon && String(s.taxon[field] ?? '').toLowerCase() === want);
 }
 
+/**
+ * One page of the source's specimens, filtered by any of the fields given: scientific name
+ * (contains), country code (exact), basis of record (exact) and collector (contains). A
+ * filter left out, or empty, does not narrow the list.
+ * @param {{scientificName?: string, countryCode?: string, basisOfRecord?: string, recordedBy?: string}} filters
+ * @param {number} [page=1]
+ * @param {number} [pageSize=50]
+ * @returns {Promise<{data: object[], last_page: number}>}
+ */
+export function fetchSpecimenList(filters = {}, page = 1, pageSize = 50) {
+  return ab().specimens({ ...filters, page, page_size: pageSize });
+}
+

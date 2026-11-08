@@ -97,7 +97,7 @@ const annotations = [
 
 const specimen = (id, name, lat, lon, countryCode) => ({
   source: SOURCE, id, scientificName: name, basisOfRecord: 'PreservedSpecimen',
-  eventDate: '2024-05-30', countryCode, decimalLatitude: lat, decimalLongitude: lon,
+  eventDate: '2024-05-30', countryCode, recordedBy: 'A. Collector', decimalLatitude: lat, decimalLongitude: lon,
 });
 
 const specimens = [

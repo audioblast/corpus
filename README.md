@@ -39,7 +39,7 @@ The tools also use the app's own escaping, URL checks and taxon names, from `js/
 A site can leave out Browse taxa, Browse traits, Browse annotations, the Recordings map and specimens. Each is on unless `config/site.js` turns it off, by its name in `features`: `features: { browse: false, map: false }`. `js/config.js` says what each one covers.
 
 - `build-page.mjs` leaves a feature that is off out of the page: its nav button and its page, the home page's button for Browse taxa, and the header's count of traits or annotations. Without the map, the page's Content-Security-Policy doesn't allow the basemap's images either. A name that isn't a feature stops the build.
-- The app doesn't show it or ask the API for it: no traits tab or traits column without traits, no annotations tab without annotations, and no Specimens tab or list of specimens without specimens. A recording keeps its own annotations. The address of a page that is off shows home.
+- The app doesn't show it or ask the API for it: no traits tab or traits column without traits, no annotations tab without annotations, no Specimens tab or list of specimens without specimens, and no Browse specimens page or nav button. A recording keeps its own annotations. The address of a page that is off shows home.
 - `build-static.mjs` writes no specimen pages, and no lists of specimens on a recording's or a taxon's page, without specimens.
 - Taxon views and taxon pages are not part of Browse taxa, and stay: recordings link to them.
 

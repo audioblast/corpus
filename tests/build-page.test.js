@@ -70,7 +70,7 @@ const PARTS = {
   traits:      ['<button data-page="traits">', '<div id="page-traits" class="page">', 'id="stat-traits"'],
   annotations: ['<button data-page="annotations">', '<div id="page-annotations" class="page">', 'id="stat-annotations"'],
   map:         ['<button data-page="map">', '<div id="page-map" class="page">'],
-  specimens:   ['<div id="page-specimen" class="page">', 'id="specimen-back"'],
+  specimens:   ['<div id="page-specimen" class="page">', 'id="specimen-back"', '<button data-page="specimens">', '<div id="page-specimens" class="page">'],
 };
 
 // A page with sections left out has no gaps where they were: no line of spaces alone,
@@ -141,6 +141,7 @@ test('a site can leave out Browse taxa and the map, and --check passes on its pa
     '    <button data-page="home"        class="active" aria-current="page">Search</button>',
     '    <button data-page="traits">Browse traits</button>',
     '    <button data-page="annotations">Browse annotations</button>',
+    '    <button data-page="specimens">Browse specimens</button>',
     '    <button data-page="about">About</button>',
     '  </nav>',
   ].join('\n')));

@@ -11,7 +11,7 @@
 const MATCH = {
   recordings: { id: 'list', name: 'fulltext', taxon: 'fulltext', author: 'fulltext', filename: 'contains' },
   annomate:   { annotator: 'contains', annotation_date: 'contains', taxon: 'contains', type: 'contains' },
-  specimens:  { id: 'list', scientificName: 'contains', decimalLatitude: 'range', decimalLongitude: 'range' },
+  specimens:  { id: 'list', scientificName: 'contains', recordedBy: 'contains', decimalLatitude: 'range', decimalLongitude: 'range' },
 };
 
 // Parameters that page or shape the answer rather than filter it. `source` is

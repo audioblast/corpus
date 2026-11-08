@@ -75,9 +75,10 @@ const config = {
    *                Annotations tab of a taxon's view. A recording's own annotations
    *                stay on its page.
    *   map          the Recordings map
-   *   specimens    a specimen's own page (/s/<id>/), and the lists of specimens on a
-   *                recording's page and a taxon's: the Specimens tab of a taxon's view.
-   *                Not in the address as a page; a site with no specimens leaves it out.
+   *   specimens    a specimen's own page (/s/<id>/), the lists of specimens on a
+   *                recording's page and a taxon's (the Specimens tab of a taxon's view),
+   *                and the Browse specimens page (?page=specimens) with its nav button.
+   *                A site with no specimens leaves it out.
    * All are on. A site leaves one out by setting it to false, as { map: false }:
    * tools/build-page.mjs leaves it out of the site's page, and the app neither shows
    * it nor asks the API for it. A taxon's view and its page (tools/build-static.mjs)

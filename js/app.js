@@ -34,6 +34,7 @@ import {
   fetchSpecimenPage,
   fetchRecordingSpecimens,
   fetchSpecimensForTaxon,
+  fetchSpecimenList,
 } from './api.js';
 
 import {
@@ -47,13 +48,14 @@ import {
 
 import { isOwnLevel } from './format.js';
 
-import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, renderDetailSpecimens, renderSpecimen, renderTaxonSpecimens, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
+import { renderRecordings, renderDetail, renderTaxonomy, renderTraits, renderAnnotations, annotationRecordingLink, wireRecordingLinks, seekDetailTo, applyAnnotationRegions, applyBirdNetRegions, renderDetailAnnotations, renderDetailBirdNet, renderDetailSpecimens, renderSpecimen, renderTaxonSpecimens, specimenPageHref, destroyDetailPlayer, staticPageHref, subgenusBrackets, ITALIC_RANKS, getField, safeUrl, UNKNOWN_TAXON, formatTimeRange } from './render.js';
 
 // Must match the page size actually used for recording queries — the
 // audioBlast default of 250, which api.js also pages its cached rows at.
 // This is display-only: it turns last_page into an approximate total.
 const RECORDS_PER_PAGE = 250;
 const TRAITS_PAGE_SIZE = 50;
+const SPECIMENS_PAGE_SIZE = 50;
 
 // Bulk-load helpers: cap concurrency so the API isn't hit with hundreds of
 // simultaneous requests on browse load.
@@ -95,6 +97,7 @@ const state = {
   taxonRankParams: null,  // cached rank params for current taxon, e.g. { class: 'Amphibia' }
   traitsFilters:       { taxon: '', trait: '', value: '', call_type: '', sex: '' },
   annotationsFilters:  { taxon: '', type: '', annotator: '' },
+  specimensFilters:    { name: '', country: '', basis: '', collector: '' },
   browseTruncated:     '',
 };
 
@@ -131,6 +134,13 @@ const els = {
   annotationsList:          $('annotations-list'),
   annotationsCount:         $('annotations-count'),
   annotationsPagination:    $('annotations-pagination'),
+  specimensNameInput:       $('specimens-name'),
+  specimensCountryInput:    $('specimens-country'),
+  specimensBasisInput:      $('specimens-basis'),
+  specimensCollectorInput:  $('specimens-collector'),
+  specimensList:            $('specimens-list'),
+  specimensCount:           $('specimens-count'),
+  specimensPagination:      $('specimens-pagination'),
   mapCanvas:                $('map-canvas'),
   mapCount:                 $('map-count'),
   mapNote:                  $('map-note'),
@@ -216,6 +226,7 @@ function showPage(name) {
   if (name === 'about')       loadAbout();
   if (name === 'traits')      loadTraitsPage(1);
   if (name === 'annotations') loadAnnotationsPage(1);
+  if (name === 'specimens')   loadSpecimensPage(1);
   if (name === 'map')         loadMapPage();
 }
 
@@ -992,6 +1003,83 @@ async function loadAnnotationsPage(page = 1) {
   }
 }
 
+// ── Browse specimens ─────────────────────────────────────────────
+
+function _renderSpecimensTable(data, container) {
+  if (!data || data.length === 0) {
+    showEmpty(container, 'No specimens found. Try different filters.');
+    return;
+  }
+
+  const rows = data.map(s => {
+    const name   = s.scientificName || 'Specimen';
+    const number = [s.institutionCode, s.collectionCode, s.catalogNumber].filter(Boolean).join(' ') || `#${s.id}`;
+    return `<tr>
+      <td><a href="${esc(specimenPageHref(s.id))}">${esc(name)}</a> <span class="traits-cell-dim">${esc(number)}</span></td>
+      <td>${esc(s.countryCode || '—')}</td>
+      <td class="traits-cell-dim">${esc(s.eventDate || '—')}</td>
+      <td class="traits-cell-dim">${esc(s.recordedBy || '—')}</td>
+      <td class="traits-cell-dim">${esc(s.basisOfRecord || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="traits-browse-table">
+      <thead>
+        <tr>
+          <th>Specimen</th>
+          <th>Country</th>
+          <th>Date</th>
+          <th>Collected by</th>
+          <th>Basis</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function _syncSpecimensFilters() {
+  const f = state.specimensFilters;
+  f.name      = els.specimensNameInput.value.trim();
+  f.country   = els.specimensCountryInput.value.trim();
+  f.basis     = els.specimensBasisInput.value.trim();
+  f.collector = els.specimensCollectorInput.value.trim();
+}
+
+async function loadSpecimensPage(page = 1) {
+  _syncSpecimensFilters();
+  const f = state.specimensFilters;
+
+  const urlParams = { page: 'specimens' };
+  if (f.name)      urlParams.name      = f.name;
+  if (f.country)   urlParams.country   = f.country;
+  if (f.basis)     urlParams.basis     = f.basis;
+  if (f.collector) urlParams.collector = f.collector;
+  if (page > 1)    urlParams.p         = page;
+  setUrl(urlParams);
+
+  showLoading(els.specimensList, 'Loading specimens…');
+  els.specimensPagination.innerHTML = '';
+  els.specimensCount.innerHTML = '';
+
+  try {
+    const { data = [], last_page = 1 } = await fetchSpecimenList({
+      scientificName: f.name      || undefined,
+      countryCode:    f.country   || undefined,
+      basisOfRecord:  f.basis     || undefined,
+      recordedBy:     f.collector || undefined,
+    }, page, SPECIMENS_PAGE_SIZE);
+
+    const noun = last_page === 1 && data.length === 1 ? 'specimen' : 'specimens';
+    els.specimensCount.innerHTML = `<strong>${_formatRecordCount(page, last_page, data.length, SPECIMENS_PAGE_SIZE)}</strong> ${noun}`;
+
+    _renderSpecimensTable(data, els.specimensList);
+    renderPagination(els.specimensPagination, last_page, page, p => loadSpecimensPage(p));
+  } catch (e) {
+    showError(els.specimensList, `Could not load specimens: ${e.message}`);
+  }
+}
+
 // ── About page ───────────────────────────────────────────────────
 let _aboutLoadPromise = null;
 
@@ -1227,7 +1315,7 @@ async function route() {
   // A taxon's page is found by the id in its address. ?taxon= takes precedence,
   // as ?id= does for a recording's page.
   const taxon = params.get('taxon') ?? await taxonNameForPage();
-  if (taxon && pg !== 'traits' && pg !== 'annotations') {
+  if (taxon && pg !== 'traits' && pg !== 'annotations' && pg !== 'specimens') {
     state.taxon = ''; // force full re-render on direct URL load
     _showTaxon(taxon, page);
     return;
@@ -1239,7 +1327,7 @@ async function route() {
     return;
   }
 
-  if (pg === 'browse' || pg === 'about' || pg === 'traits' || pg === 'annotations') {
+  if (pg === 'browse' || pg === 'about' || pg === 'traits' || pg === 'annotations' || pg === 'specimens') {
     applyPage(pg);
     if (pg === 'browse') loadBrowse();
     if (pg === 'about')  loadAbout();
@@ -1266,6 +1354,18 @@ async function route() {
       els.annotationsTypeInput.value      = f.type;
       els.annotationsAnnotatorInput.value = f.annotator;
       loadAnnotationsPage(parseInt(params.get('p') ?? '1', 10));
+    }
+    if (pg === 'specimens') {
+      const f = state.specimensFilters;
+      f.name      = params.get('name')      ?? '';
+      f.country   = params.get('country')   ?? '';
+      f.basis     = params.get('basis')     ?? '';
+      f.collector = params.get('collector') ?? '';
+      els.specimensNameInput.value      = f.name;
+      els.specimensCountryInput.value   = f.country;
+      els.specimensBasisInput.value     = f.basis;
+      els.specimensCollectorInput.value = f.collector;
+      loadSpecimensPage(parseInt(params.get('p') ?? '1', 10));
     }
     return;
   }
@@ -1464,6 +1564,22 @@ function init() {
     _setupAutocomplete(els.annotationsTaxonInput,     q => fetchAutocomplete('annomate', 'taxon',     q), annotationsOnSelect(els.annotationsTaxonInput));
     _setupAutocomplete(els.annotationsTypeInput,      q => fetchAutocomplete('annomate', 'type',      q), annotationsOnSelect(els.annotationsTypeInput));
     _setupAutocomplete(els.annotationsAnnotatorInput, q => fetchAutocomplete('annomate', 'annotator', q), annotationsOnSelect(els.annotationsAnnotatorInput));
+  }
+
+  // The filters of the specimens page, when the site has specimens.
+  if (config.hasFeature('specimens')) {
+    const sd = { t: null };
+
+    setupFilterInputs(
+      [els.specimensNameInput, els.specimensCountryInput, els.specimensBasisInput, els.specimensCollectorInput],
+      sd, loadSpecimensPage,
+    );
+    $('specimens-search-btn').addEventListener('click', () => { clearTimeout(sd.t); loadSpecimensPage(1); });
+
+    const specimensOnSelect = makeOnSelect(sd, loadSpecimensPage);
+    _setupAutocomplete(els.specimensNameInput,    q => fetchAutocomplete('specimens', 'scientificName', q), specimensOnSelect(els.specimensNameInput));
+    _setupAutocomplete(els.specimensCountryInput, q => fetchAutocomplete('specimens', 'countryCode',    q), specimensOnSelect(els.specimensCountryInput));
+    _setupAutocomplete(els.specimensBasisInput,   q => fetchAutocomplete('specimens', 'basisOfRecord',  q), specimensOnSelect(els.specimensBasisInput));
   }
 
   // Autocomplete for main search. Suggestions come from `recordings`, so each

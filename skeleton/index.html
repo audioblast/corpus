@@ -65,6 +65,7 @@
     {{#browse}}<button data-page="browse">Browse taxa</button>{{/browse}}
     {{#traits}}<button data-page="traits">Browse traits</button>{{/traits}}
     {{#annotations}}<button data-page="annotations">Browse annotations</button>{{/annotations}}
+    {{#specimens}}<button data-page="specimens">Browse specimens</button>{{/specimens}}
     {{#map}}<button data-page="map">Recordings map</button>{{/map}}
     <button data-page="about">About</button>
   </nav>
@@ -261,6 +262,51 @@
 
 
 {{/annotations}}
+{{#specimens}}
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE: SPECIMENS
+════════════════════════════════════════════════════════════════ -->
+<div id="page-specimens" class="page">
+  <div class="browse-section">
+    <h2 class="browse-title">Browse specimens</h2>
+    <p class="browse-subtitle">The specimens that recordings are of, from the collections</p>
+
+    <div class="traits-filters">
+      <div class="traits-filter-row">
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="specimens-name">Name</label>
+          <input type="text" id="specimens-name" class="traits-filter-input"
+                 placeholder="e.g. {{exampleTaxon}}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="specimens-country">Country</label>
+          <input type="text" id="specimens-country" class="traits-filter-input"
+                 placeholder="e.g. GB" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="specimens-basis">Basis of record</label>
+          <input type="text" id="specimens-basis" class="traits-filter-input"
+                 placeholder="e.g. PreservedSpecimen" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field">
+          <label class="traits-filter-label" for="specimens-collector">Collected by</label>
+          <input type="text" id="specimens-collector" class="traits-filter-input"
+                 placeholder="collector name" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="traits-filter-field traits-filter-field--btn">
+          <button class="btn btn-primary" id="specimens-search-btn">Search</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-header">
+      <div class="results-count" id="specimens-count"></div>
+    </div>
+    <div id="specimens-list"></div>
+    <div id="specimens-pagination" class="pagination"></div>
+  </div>
+</div>
+{{/specimens}}
 {{#map}}
 <!-- ═══════════════════════════════════════════════════════════════
      PAGE: RECORDINGS MAP
