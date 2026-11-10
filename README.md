@@ -82,6 +82,8 @@ A static host can't redirect, so `build-static.mjs` writes a page at each old ad
 
 `package.json` holds the version, and `build-page.mjs` pins a site's page to it. A published version folder should never change afterwards, because Cloudflare caches a request for a file that doesn't exist yet as a 404. Publishing to `cdn.audioblast.org/corpus/<version>/` is manual for now.
 
+0.4.3 lets a site choose the wavesurfer.js its player loads, by its folder on the CDN, with `wavesurferVersion` in `config/site.js`: a release, or a build of a commit that isn't in a release yet, such as `main-66742ba`. The default stays 8.0.3. A site moves to it by setting `corpusVersion` to `0.4.3` and running `build-page.mjs`.
+
 0.4.2 adds publications: a page for each publication, at `p/<id>/`, with its citation, abstract, DOI and the recordings, taxa and descriptions it links to (see Features). A recording lists the publications that cite it, a taxon has Literature and Descriptions tabs, and a description's sources link to their publications. A taxon has a page when a recording, a description or a publication is about it or under it, and a taxon with no recordings shows its hierarchy from its own row. It comes with publications, and a site with none sets `features: { publications: false }`, which leaves them out too. A site moves to it by setting `corpusVersion` to `0.4.2` and running `build-page.mjs`.
 
 0.4.1 adds Browse specimens: a page in the navigation that lists the specimens a page at a time, filtered by name, country, basis of record and collector (see Features). It comes with specimens, and a site with none sets `features: { specimens: false }`, which leaves it out too. A site moves to it by setting `corpusVersion` to `0.4.1` and running `build-page.mjs`.
