@@ -113,7 +113,7 @@ async function cdnFile(pathname) {
   const dir = path.join(ROOT, 'node_modules', pkg);
   const installed = JSON.parse(await fs.readFile(path.join(dir, 'package.json'), 'utf8')).version;
   if (installed !== version) {
-    return { problem: `js/render.js loads ${library} ${version} from the CDN, but package.json installs `
+    return { problem: `the core loads ${library} ${version} from the CDN, but package.json installs `
       + `${pkg} ${installed}: change its devDependency to ${version}` };
   }
   return { file: path.join(dir, 'dist', rest) };

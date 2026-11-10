@@ -86,11 +86,10 @@ function _opaque(color) {
 // Loads the UMD bundle + 3 plugins from cdn.audioblast.org on first
 // detail-page view, so home/browse/traits/annotations pages don't pay the
 // ~300 KB JS cost. The CDN keeps each library in a folder per version, so
-// a new release never changes what is loaded here.
+// a new release never changes what is loaded here. Which wavesurfer.js
+// folder is the site's: wavesurferVersion in its config.
 const _WS_CDN      = 'https://cdn.audioblast.org/';
-const _WS_VERSION  = '8.0.3';
-const _WS_BASE     = `${_WS_CDN}wavesurfer/${_WS_VERSION}/`;
-const _WS_PLUGINS  = ['plugins/regions.min.js', 'plugins/spectrogram.min.js', 'plugins/timeline.min.js'];
+const _WS_PLUGINS  =['plugins/regions.min.js', 'plugins/spectrogram.min.js', 'plugins/timeline.min.js'];
 // The plugin that shows precomputed spectrogram tiles. It is loaded after the
 // rest and on its own, so that without it the player still works, with the
 // in-browser spectrogram alone. From 0.2.0 it shows the tiles of a recording
@@ -120,9 +119,13 @@ function _loadWaveSurfer() {
     });
   }
 
+  // Read here, not when the module loads: start() puts the site's config in
+  // place after that.
+  const base = `${_WS_CDN}wavesurfer/${encodeURIComponent(config.wavesurferVersion)}/`;
+
   // Core must finish before plugins (they read window.WaveSurfer at parse time).
-  _wavesurferReady = loadScript(_WS_BASE + 'wavesurfer.min.js')
-    .then(() => Promise.all(_WS_PLUGINS.map(p => loadScript(_WS_BASE + p))))
+  _wavesurferReady = loadScript(base + 'wavesurfer.min.js')
+    .then(() => Promise.all(_WS_PLUGINS.map(p => loadScript(base + p))))
     .then(() => loadScript(_WS_TILES).catch(() => {}))
     .then(() => loadScript(_WS_ANNOTATIONS).catch(() => {}));
   return _wavesurferReady;

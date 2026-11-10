@@ -1,11 +1,17 @@
-// Tests for the core's default config: the empty source, the recording-type rules, and
-// the features.
+// Tests for the core's default config: the empty source, the recording-type rules, the
+// features, and the wavesurfer.js the player loads.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import config from '../js/config.js';
 
 test('the default config has no source, so a site must set one', () => {
   assert.equal(config.source, null);
+});
+
+test('the player loads by default the wavesurfer.js the browser checks install', async () => {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(config.wavesurferVersion, pkg.devDependencies['wavesurfer.js']);
 });
 
 test('by default every recording type is shown', () => {

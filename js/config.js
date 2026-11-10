@@ -122,6 +122,18 @@ const config = {
     return filename || '';
   },
 
+  // ── Player ────────────────────────────────────────────────────────
+
+  /**
+   * The wavesurfer.js a recording's player loads, with its regions, spectrogram
+   * and timeline plugins: its folder on cdn.audioblast.org, under wavesurfer/. A
+   * folder holds a release, as '8.0.3', or a build of a commit that isn't in a
+   * release yet, named for it, as 'main-66742ba'. The browser checks serve the
+   * default from the npm package of that version (the wavesurfer.js devDependency),
+   * so the two change together.
+   */
+  wavesurferVersion: '8.0.3',
+
   // ── External links ────────────────────────────────────────────────
 
   /**

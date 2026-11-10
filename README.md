@@ -8,7 +8,7 @@ bio.acousti.ca and soil.acousti.ca run on it, and load it from `cdn.audioblast.o
 
 A `config/` folder, with:
 
-- `site.js`: its settings and copy, with the shape of `js/config.js`. It sets `source` and whatever differs from the defaults: names, logo, hero, filter examples, links, recording types, map tiles, and the features it leaves out (see Features).
+- `site.js`: its settings and copy, with the shape of `js/config.js`. It sets `source` and whatever differs from the defaults: names, logo, hero, filter examples, links, recording types, map tiles, the wavesurfer.js its player loads (`wavesurferVersion`), and the features it leaves out (see Features).
 - `about.html`: the About page's content, an HTML fragment that the app loads into the page.
 - `theme.css`, if the site has its own colours (see Styles).
 - `redirects.json`, if the site had other addresses before it ran on corpus (see Old addresses).

@@ -57,7 +57,7 @@ A check fails, after it has run, on:
 ## When the app changes
 
 - The app uses a new API endpoint or parameter: the check fails with the request's address. Add the endpoint or parameter to `fake-api.js`, with the matching rules the live API has, which `js/audioblast.js` describes.
-- `js/render.js` loads a new version of WaveSurfer or one of its plugins: the check fails and names it. Change the devDependency in `package.json` to that version.
+- The core loads a new version of WaveSurfer (`wavesurferVersion` in `js/config.js`) or one of its plugins (`js/render.js`): the check fails and names it. Change the devDependency in `package.json` to that version.
 - A page's text or markup changes: change the check. The checks find things by their text and role where they can, and by the app's ids elsewhere.
 - A new page or feature: add a check to `collection.spec.js` or `empty.spec.js`, and rows to `data/` if it needs them. If a site can turn it off, check that in `features.spec.js` too.
 - A new Playwright: change the devDependency, run `npm install` and `npx playwright install`, and run the checks.
